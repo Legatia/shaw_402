@@ -162,6 +162,22 @@ export class SolanaUtils {
   }
 
   /**
+   * Get transaction details
+   */
+  async getTransaction(signature: string): Promise<any> {
+    try {
+      const tx = await this.rpc.getTransaction(signature as any, {
+        encoding: 'json',
+        maxSupportedTransactionVersion: 0,
+      }).send();
+      return tx;
+    } catch (error) {
+      console.error('Error getting transaction:', error);
+      return null;
+    }
+  }
+
+  /**
    * Get RPC instance for direct access
    */
   getRpc() {

@@ -6,20 +6,45 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getServerContext } from '../lib/get-server-context.js';
 import { createX402MiddlewareWithUtils } from '../lib/x402-middleware.js';
 import { successResponse, errorResponse } from '../lib/api-response-helpers.js';
 import { REQUEST_TIMEOUT, RETRY_ATTEMPTS, REQUEST_BODY_LIMIT, PAYMENT_AMOUNTS } from '../lib/constants.js';
+import { AffiliateDatabase } from '../lib/affiliate-database.js';
+import { SolanaUtils } from '../lib/solana-utils.js';
+import merchantRoutes, { initializeMerchantRoutes } from '../routes/merchant.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Initialize context
 const context = getServerContext();
 const app: Express = express();
 
+// Initialize affiliate database
+const affiliateDb = new AffiliateDatabase('./data/affiliate.db');
+
+// Initialize Solana utils for merchant routes
+const solanaUtils = new SolanaUtils({
+  rpcEndpoint: context.config.solanaRpcUrl || 'https://api.devnet.solana.com',
+  rpcSubscriptionsEndpoint: context.config.solanaWsUrl,
+});
+
 // Setup middleware
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Allow inline scripts for frontend
+  })
+);
 app.use(cors());
 app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files from public directory
+const publicPath = path.join(__dirname, '../../public');
+app.use(express.static(publicPath));
 
 // Request logging
 app.use((req, _res, next) => {
@@ -40,6 +65,22 @@ const x402Utils = createX402MiddlewareWithUtils(
 // ============================================================================
 // ROUTES
 // ============================================================================
+
+// Initialize merchant routes
+initializeMerchantRoutes(affiliateDb, solanaUtils);
+app.use('/merchant', merchantRoutes);
+
+// Config endpoint for frontend
+app.get('/api/config', (_req, res) => {
+  res.json(
+    successResponse({
+      platformWallet: process.env.PLATFORM_WALLET || '',
+      registrationFee: process.env.REGISTRATION_FEE || '50000000',
+      platformBaseUrl: process.env.PLATFORM_BASE_URL || 'http://localhost:3000',
+      solanaNetwork: context.config.solanaNetwork || 'devnet',
+    })
+  );
+});
 
 // Health check endpoint
 app.get('/health', async (_req, res) => {
@@ -232,11 +273,19 @@ app.use((_req, res) => {
 
 async function start() {
   try {
+    // Initialize affiliate database
+    await affiliateDb.initialize();
+    context.log.info('Affiliate database initialized');
+
     app.listen(context.config.port, () => {
       context.log.info(`Server App running on port ${context.config.port}`);
       context.log.info(`Facilitator URL: ${context.config.facilitatorUrl}`);
       context.log.info('');
       context.log.info('Available endpoints:');
+      context.log.info('  GET  / - Merchant registration landing page');
+      context.log.info('  POST /merchant/register - Register new merchant');
+      context.log.info('  GET  /merchant/:id - Get merchant details');
+      context.log.info('  POST /merchant/affiliate/register - Register affiliate');
       context.log.info('  GET  /health - Health check');
       context.log.info('  GET  /public - Public endpoint (no payment)');
       context.log.info('  GET  /api/premium-data - Premium data (payment required)');
@@ -254,6 +303,7 @@ async function start() {
 // Graceful shutdown
 async function shutdown() {
   context.log.info('Shutting down Server App...');
+  await affiliateDb.close();
   process.exit(0);
 }
 
