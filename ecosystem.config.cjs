@@ -1,6 +1,6 @@
 /**
  * PM2 Ecosystem Configuration
- * Manages both facilitator and server processes
+ * Manages facilitator, server, and agent processes
  *
  * Uses node_args to load dotenv which loads .env file
  */
@@ -34,6 +34,21 @@ module.exports = {
       node_args: '-r dotenv/config',
       error_file: './logs/server-error.log',
       out_file: './logs/server-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+    },
+    {
+      name: 'x402-agent',
+      script: './dist/agent/index.js',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      cwd: process.cwd(),
+      node_args: '-r dotenv/config',
+      error_file: './logs/agent-error.log',
+      out_file: './logs/agent-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
     },
