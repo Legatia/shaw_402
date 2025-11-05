@@ -7,6 +7,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { getFacilitatorContext } from '../lib/get-facilitator-context.js';
 import { healthCheckRoute, verifyPaymentRoute, settlePaymentRoute, getNonceRoute, getStatsRoute, cleanupNoncesRoute, } from '../routes/index.js';
+import settleUSDCSplitRoute from '../routes/settle-usdc-split.js';
 import { REQUEST_BODY_LIMIT, CLEANUP_INTERVAL_MS } from '../lib/constants.js';
 // Initialize context
 const context = await getFacilitatorContext();
@@ -42,6 +43,8 @@ app.post('/settle', settlePaymentRoute({
         facilitatorPrivateKey: context.config.facilitatorPrivateKey,
     },
 }));
+// USDC Split Settlement (for affiliate commissions)
+app.use('/settle-usdc-split', settleUSDCSplitRoute);
 app.get('/nonce/:nonce', getNonceRoute({
     nonceDb: context.nonceDb,
 }));

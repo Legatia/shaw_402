@@ -259,12 +259,22 @@
         <div class="feature-list">
             <h3>What You Get:</h3>
             <ul>
-                <li>Instant affiliate payouts via Solana</li>
+                <li>Instant affiliate payouts in USDC (stable commissions)</li>
                 <li>Automatic payment splitting with 402 protocol</li>
-                <li>Your own Payment Processor Agent</li>
+                <li>Your own Payment Processor Agent with USDC wallet</li>
                 <li>Unique affiliate recruitment link</li>
                 <li>Real-time transaction tracking</li>
                 <li>Zero manual processing</li>
+            </ul>
+        </div>
+
+        <div class="feature-list" style="background: #fff3cd; border: 2px solid #ffc107; margin-top: 20px;">
+            <h3 style="color: #856404;">💰 Dual-Token Model</h3>
+            <ul style="color: #856404;">
+                <li><strong>Registration:</strong> One-time 0.05 SOL payment</li>
+                <li><strong>Commissions:</strong> All settled in USDC (stable value)</li>
+                <li><strong>Agent Funding:</strong> We fund your agent with 0.01 SOL for gas</li>
+                <li><strong>Your Merchants Pay:</strong> In USDC (predictable budgets)</li>
             </ul>
         </div>
 
@@ -299,8 +309,19 @@
             </div>
 
             <div class="result-item">
-                <div class="result-label">Payment Agent Wallet</div>
+                <div class="result-label">Payment Agent Wallet (SOL)</div>
                 <div class="result-value" id="agentWallet"></div>
+                <small>Funded with 0.01 SOL for gas fees</small>
+            </div>
+
+            <div class="result-item">
+                <div class="result-label">Agent USDC Account (Receives Payments)</div>
+                <div class="result-value" id="agentUSDCAccount"></div>
+            </div>
+
+            <div class="result-item">
+                <div class="result-label">Your USDC Account (Receives Commission)</div>
+                <div class="result-value" id="merchantUSDCAccount"></div>
             </div>
 
             <div class="link-box">
@@ -310,8 +331,12 @@
             </div>
 
             <div class="result-item" style="margin-top: 20px;">
+                <div class="result-label">Settlement Token: <strong>USDC</strong></div>
                 <div class="result-label">Platform Fee: <span id="platformFee"></span></div>
                 <div class="result-label">Affiliate Commission: <span id="affiliateFee"></span></div>
+                <div style="margin-top: 10px; padding: 10px; background: #d1ecf1; border-radius: 5px; font-size: 14px;">
+                    <strong>Example:</strong> Customer pays 100 USDC → Platform gets 5 USDC, Affiliate gets 15 USDC, You get 80 USDC
+                </div>
             </div>
         </div>
     </div>
@@ -456,6 +481,8 @@
         function displayResults(data) {
             document.getElementById('merchantId').textContent = data.merchantId;
             document.getElementById('agentWallet').textContent = data.agentWallet;
+            document.getElementById('agentUSDCAccount').textContent = data.agentUSDCAccount || 'N/A';
+            document.getElementById('merchantUSDCAccount').textContent = data.merchantUSDCAccount || 'N/A';
             document.getElementById('affiliateLink').textContent = data.affiliateSignupUrl;
             document.getElementById('platformFee').textContent = (data.platformFeeRate * 100) + '%';
             document.getElementById('affiliateFee').textContent = (data.affiliateFeeRate * 100) + '%';

@@ -15,6 +15,7 @@ import {
   getStatsRoute,
   cleanupNoncesRoute,
 } from '../routes/index.js';
+import settleUSDCSplitRoute from '../routes/settle-usdc-split.js';
 import { REQUEST_BODY_LIMIT, CLEANUP_INTERVAL_MS } from '../lib/constants.js';
 
 // Initialize context
@@ -65,6 +66,9 @@ app.post(
     },
   })
 );
+
+// USDC Split Settlement (for affiliate commissions)
+app.use('/settle-usdc-split', settleUSDCSplitRoute);
 
 app.get(
   '/nonce/:nonce',

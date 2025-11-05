@@ -6,13 +6,17 @@ import { createSolanaRpc, createSolanaRpcSubscriptions, address } from 'gill';
 import { SignatureVerificationError } from '../errors/index.js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
+import { Connection, Transaction, SystemProgram, sendAndConfirmTransaction, } from '@solana/web3.js';
+import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createTransferInstruction, getAccount, } from '@solana/spl-token';
 export class SolanaUtils {
     rpc;
     rpcSubscriptions;
     rpcUrl;
+    connection;
     constructor(config) {
         this.rpcUrl = config.rpcEndpoint;
         this.rpc = createSolanaRpc(config.rpcEndpoint);
+        this.connection = new Connection(config.rpcEndpoint, 'confirmed');
         if (config.rpcSubscriptionsEndpoint) {
             this.rpcSubscriptions = createSolanaRpcSubscriptions(config.rpcSubscriptionsEndpoint);
         }
@@ -146,6 +150,145 @@ export class SolanaUtils {
      */
     getRpcSubscriptions() {
         return this.rpcSubscriptions;
+    }
+    /**
+     * Get Connection instance for direct access
+     */
+    getConnection() {
+        return this.connection;
+    }
+    // ============================================================================
+    // SPL TOKEN UTILITIES (USDC Support)
+    // ============================================================================
+    /**
+     * Get or create associated token account for a wallet
+     */
+    async getOrCreateAssociatedTokenAccount(mint, owner, payer) {
+        try {
+            // Get associated token account address
+            const ata = await getAssociatedTokenAddress(mint, owner);
+            // Check if account exists
+            try {
+                await getAccount(this.connection, ata);
+                console.log(`  ✓ Associated token account exists: ${ata.toString()}`);
+                return ata;
+            }
+            catch (error) {
+                // Account doesn't exist, create it
+                console.log(`  Creating associated token account for ${owner.toString()}`);
+                const transaction = new Transaction().add(createAssociatedTokenAccountInstruction(payer.publicKey, ata, owner, mint));
+                await sendAndConfirmTransaction(this.connection, transaction, [payer]);
+                console.log(`  ✓ Created associated token account: ${ata.toString()}`);
+                return ata;
+            }
+        }
+        catch (error) {
+            console.error('Error getting/creating associated token account:', error);
+            throw new Error(`Failed to get/create token account: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+    /**
+     * Get SPL token balance
+     */
+    async getTokenBalance(tokenAccount) {
+        try {
+            const accountInfo = await getAccount(this.connection, tokenAccount);
+            return accountInfo.amount;
+        }
+        catch (error) {
+            console.error('Error getting token balance:', error);
+            return BigInt(0);
+        }
+    }
+    /**
+     * Get USDC balance for a wallet
+     */
+    async getUSDCBalance(owner, usdcMint) {
+        try {
+            const ata = await getAssociatedTokenAddress(usdcMint, owner);
+            return await this.getTokenBalance(ata);
+        }
+        catch (error) {
+            console.error('Error getting USDC balance:', error);
+            return BigInt(0);
+        }
+    }
+    /**
+     * Transfer SOL from one wallet to another
+     */
+    async transferSOL(from, to, lamports) {
+        try {
+            const transaction = new Transaction().add(SystemProgram.transfer({
+                fromPubkey: from.publicKey,
+                toPubkey: to,
+                lamports,
+            }));
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [from]);
+            console.log(`  ✓ Transferred ${lamports / 1_000_000_000} SOL to ${to.toString()}`);
+            console.log(`    Signature: ${signature}`);
+            return signature;
+        }
+        catch (error) {
+            console.error('Error transferring SOL:', error);
+            throw new Error(`Failed to transfer SOL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+    /**
+     * Transfer SPL tokens
+     */
+    async transferTokens(from, fromTokenAccount, toTokenAccount, amount) {
+        try {
+            const transaction = new Transaction().add(createTransferInstruction(fromTokenAccount, toTokenAccount, from.publicKey, amount));
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [from]);
+            console.log(`  ✓ Transferred ${amount} tokens`);
+            console.log(`    Signature: ${signature}`);
+            return signature;
+        }
+        catch (error) {
+            console.error('Error transferring tokens:', error);
+            throw new Error(`Failed to transfer tokens: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+    /**
+     * Multi-party USDC split (for affiliate commissions)
+     * Creates atomic transaction with multiple SPL token transfers
+     */
+    async splitUSDCPayment(agentKeypair, usdcMint, recipients) {
+        try {
+            console.log('🔀 USDC Payment Split - Atomic Settlement');
+            console.log(`  Agent: ${agentKeypair.publicKey.toString()}`);
+            // Get agent's USDC account
+            const agentUSDCAccount = await getAssociatedTokenAddress(usdcMint, agentKeypair.publicKey);
+            // Build transaction with multiple transfers
+            const transaction = new Transaction();
+            for (const recipient of recipients) {
+                const recipientUSDCAccount = await getAssociatedTokenAddress(usdcMint, recipient.owner);
+                transaction.add(createTransferInstruction(agentUSDCAccount, recipientUSDCAccount, agentKeypair.publicKey, recipient.amount));
+                console.log(`  → ${recipient.owner.toString()}: ${Number(recipient.amount) / 1_000_000} USDC`);
+            }
+            // Send atomic transaction
+            const signature = await sendAndConfirmTransaction(this.connection, transaction, [agentKeypair]);
+            console.log('  ✓ USDC split completed!');
+            console.log(`    Signature: ${signature}`);
+            console.log(`    Explorer: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+            return signature;
+        }
+        catch (error) {
+            console.error('Error splitting USDC payment:', error);
+            throw new Error(`Failed to split USDC payment: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+    /**
+     * Convert USDC amount to human-readable format (6 decimals)
+     */
+    usdcToHuman(amount) {
+        return Number(amount) / 1_000_000;
+    }
+    /**
+     * Convert human-readable USDC to raw amount (6 decimals)
+     */
+    humanToUSDC(amount) {
+        return BigInt(Math.floor(amount * 1_000_000));
     }
     /**
      * Submit a sponsored transaction (TRUE x402 instant finality)

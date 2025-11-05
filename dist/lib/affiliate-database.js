@@ -47,6 +47,10 @@ export class AffiliateDatabase {
           affiliate_fee_rate REAL DEFAULT 0.15,
           registration_tx_signature TEXT,
           status TEXT DEFAULT 'active',
+          settlement_token TEXT DEFAULT 'USDC',
+          usdc_mint TEXT NOT NULL,
+          agent_usdc_account TEXT NOT NULL,
+          merchant_usdc_account TEXT NOT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `;
@@ -118,8 +122,9 @@ export class AffiliateDatabase {
         INSERT INTO merchants (
           merchant_id, business_name, merchant_wallet, agent_wallet,
           agent_private_key, platform_fee_rate, affiliate_fee_rate,
-          registration_tx_signature, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          registration_tx_signature, status, settlement_token,
+          usdc_mint, agent_usdc_account, merchant_usdc_account
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
             this.db.run(sql, [
                 merchantData.merchantId,
@@ -131,6 +136,10 @@ export class AffiliateDatabase {
                 merchantData.affiliateFeeRate,
                 merchantData.registrationTxSignature,
                 merchantData.status,
+                merchantData.settlementToken,
+                merchantData.usdcMint,
+                merchantData.agentUSDCAccount,
+                merchantData.merchantUSDCAccount,
             ], function (err) {
                 if (err) {
                     if (err.message.includes('UNIQUE constraint failed')) {
@@ -170,6 +179,10 @@ export class AffiliateDatabase {
                     affiliateFeeRate: row.affiliate_fee_rate,
                     registrationTxSignature: row.registration_tx_signature,
                     status: row.status,
+                    settlementToken: row.settlement_token || 'USDC',
+                    usdcMint: row.usdc_mint,
+                    agentUSDCAccount: row.agent_usdc_account,
+                    merchantUSDCAccount: row.merchant_usdc_account,
                 });
             });
         });
@@ -199,6 +212,10 @@ export class AffiliateDatabase {
                     affiliateFeeRate: row.affiliate_fee_rate,
                     registrationTxSignature: row.registration_tx_signature,
                     status: row.status,
+                    settlementToken: row.settlement_token || 'USDC',
+                    usdcMint: row.usdc_mint,
+                    agentUSDCAccount: row.agent_usdc_account,
+                    merchantUSDCAccount: row.merchant_usdc_account,
                 });
             });
         });

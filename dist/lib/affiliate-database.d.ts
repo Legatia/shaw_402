@@ -12,6 +12,10 @@ export interface MerchantData {
     affiliateFeeRate: number;
     registrationTxSignature: string;
     status: 'active' | 'suspended' | 'inactive';
+    settlementToken: 'USDC';
+    usdcMint: string;
+    agentUSDCAccount: string;
+    merchantUSDCAccount: string;
 }
 export interface AffiliateData {
     affiliateId: string;

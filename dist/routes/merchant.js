@@ -2,15 +2,19 @@
  * Merchant Registration and Management Routes
  */
 import { Router } from 'express';
-import { Keypair } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddress } from '@solana/spl-token';
 import bs58 from 'bs58';
 import crypto from 'crypto';
 import { successResponse, errorResponse } from '../lib/api-response-helpers.js';
 const router = Router();
 // Platform configuration
 const PLATFORM_WALLET = process.env.PLATFORM_WALLET || '';
+const PLATFORM_KEYPAIR_SECRET = process.env.PLATFORM_PRIVATE_KEY || ''; // Platform wallet private key
 // const REGISTRATION_FEE = process.env.REGISTRATION_FEE || '50000000'; // 0.05 SOL default
 const PLATFORM_BASE_URL = process.env.PLATFORM_BASE_URL || 'http://localhost:3000';
+const USDC_MINT_ADDRESS = process.env.USDC_MINT_ADDRESS || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'; // Devnet USDC
+const AGENT_GAS_FUNDING = 10_000_000; // 0.01 SOL for gas fees
 // Initialize database and Solana utils
 let affiliateDb;
 let solanaUtils;
@@ -68,6 +72,28 @@ router.post('/register', async (req, res) => {
         const agentPrivateKey = bs58.encode(agentKeypair.secretKey);
         // Generate merchant ID
         const merchantId = generateMerchantId();
+        console.log(`🔧 Setting up Payment Processor Agent for ${businessName}...`);
+        console.log(`   Merchant ID: ${merchantId}`);
+        console.log(`   Agent Wallet: ${agentWallet}`);
+        // Setup USDC accounts
+        const usdcMint = new PublicKey(USDC_MINT_ADDRESS);
+        const merchantPubkey = new PublicKey(merchantWallet);
+        const platformKeypair = Keypair.fromSecretKey(bs58.decode(PLATFORM_KEYPAIR_SECRET));
+        // Get USDC token account addresses
+        const agentUSDCAccount = await getAssociatedTokenAddress(usdcMint, agentKeypair.publicKey);
+        const merchantUSDCAccount = await getAssociatedTokenAddress(usdcMint, merchantPubkey);
+        console.log(`   Agent USDC Account: ${agentUSDCAccount.toString()}`);
+        console.log(`   Merchant USDC Account: ${merchantUSDCAccount.toString()}`);
+        // Create USDC account for agent
+        console.log(`   Creating agent USDC token account...`);
+        await solanaUtils.getOrCreateAssociatedTokenAccount(usdcMint, agentKeypair.publicKey, platformKeypair);
+        // Create USDC account for merchant (if doesn't exist)
+        console.log(`   Creating merchant USDC token account...`);
+        await solanaUtils.getOrCreateAssociatedTokenAccount(usdcMint, merchantPubkey, platformKeypair);
+        // Fund agent wallet with SOL for gas fees
+        console.log(`   Funding agent with ${AGENT_GAS_FUNDING / 1_000_000_000} SOL for gas...`);
+        await solanaUtils.transferSOL(platformKeypair, agentKeypair.publicKey, AGENT_GAS_FUNDING);
+        console.log(`   ✅ Agent setup complete!`);
         // Store merchant in database
         const merchantData = {
             merchantId,
@@ -79,22 +105,30 @@ router.post('/register', async (req, res) => {
             affiliateFeeRate: affiliateFeeRate || 0.15,
             registrationTxSignature: txSignature,
             status: 'active',
+            settlementToken: 'USDC',
+            usdcMint: USDC_MINT_ADDRESS,
+            agentUSDCAccount: agentUSDCAccount.toString(),
+            merchantUSDCAccount: merchantUSDCAccount.toString(),
         };
         await affiliateDb.storeMerchant(merchantData);
         // Generate affiliate recruitment link
         const affiliateSignupUrl = `${PLATFORM_BASE_URL}/affiliate/signup?merchant=${merchantId}`;
         console.log(`✅ Merchant registered: ${merchantId} - ${businessName}`);
-        console.log(`   Agent Wallet: ${agentWallet}`);
+        console.log(`   Settlement: USDC (instant commission payouts)`);
         console.log(`   Affiliate Link: ${affiliateSignupUrl}`);
         // Return success response
         res.status(201).json(successResponse({
             merchantId,
             businessName,
             agentWallet,
+            agentUSDCAccount: agentUSDCAccount.toString(),
+            merchantUSDCAccount: merchantUSDCAccount.toString(),
             affiliateSignupUrl,
             platformFeeRate: merchantData.platformFeeRate,
             affiliateFeeRate: merchantData.affiliateFeeRate,
+            settlementToken: 'USDC',
             status: 'active',
+            note: 'Your agent wallet has been funded with 0.01 SOL for gas fees. All commissions will be paid in USDC.',
         }));
     }
     catch (error) {

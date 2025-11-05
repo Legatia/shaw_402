@@ -3,6 +3,7 @@
  * Handles Solana operations, signatures, and transactions
  */
 import type { Address } from 'gill';
+import { Connection, PublicKey, Keypair } from '@solana/web3.js';
 export interface SolanaUtilsConfig {
     rpcEndpoint: string;
     rpcSubscriptionsEndpoint?: string;
@@ -35,6 +36,7 @@ export declare class SolanaUtils {
     private rpc;
     private rpcSubscriptions?;
     private rpcUrl;
+    private connection;
     constructor(config: SolanaUtilsConfig);
     /**
      * Get SOL balance for a public key
@@ -84,6 +86,46 @@ export declare class SolanaUtils {
      * Get RPC subscriptions instance for direct access
      */
     getRpcSubscriptions(): import("gill").RpcSubscriptions<import("gill").SolanaRpcSubscriptionsApi> | import("gill").RpcSubscriptionsDevnet<import("gill").SolanaRpcSubscriptionsApi> | import("gill").RpcSubscriptionsMainnet<import("gill").SolanaRpcSubscriptionsApi> | import("gill").RpcSubscriptionsTestnet<import("gill").SolanaRpcSubscriptionsApi> | undefined;
+    /**
+     * Get Connection instance for direct access
+     */
+    getConnection(): Connection;
+    /**
+     * Get or create associated token account for a wallet
+     */
+    getOrCreateAssociatedTokenAccount(mint: PublicKey, owner: PublicKey, payer: Keypair): Promise<PublicKey>;
+    /**
+     * Get SPL token balance
+     */
+    getTokenBalance(tokenAccount: PublicKey): Promise<bigint>;
+    /**
+     * Get USDC balance for a wallet
+     */
+    getUSDCBalance(owner: PublicKey, usdcMint: PublicKey): Promise<bigint>;
+    /**
+     * Transfer SOL from one wallet to another
+     */
+    transferSOL(from: Keypair, to: PublicKey, lamports: number): Promise<string>;
+    /**
+     * Transfer SPL tokens
+     */
+    transferTokens(from: Keypair, fromTokenAccount: PublicKey, toTokenAccount: PublicKey, amount: bigint): Promise<string>;
+    /**
+     * Multi-party USDC split (for affiliate commissions)
+     * Creates atomic transaction with multiple SPL token transfers
+     */
+    splitUSDCPayment(agentKeypair: Keypair, usdcMint: PublicKey, recipients: Array<{
+        owner: PublicKey;
+        amount: bigint;
+    }>): Promise<string>;
+    /**
+     * Convert USDC amount to human-readable format (6 decimals)
+     */
+    usdcToHuman(amount: bigint): number;
+    /**
+     * Convert human-readable USDC to raw amount (6 decimals)
+     */
+    humanToUSDC(amount: number): bigint;
     /**
      * Submit a sponsored transaction (TRUE x402 instant finality)
      * Client signs the transaction, facilitator adds signature as fee payer.
