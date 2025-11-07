@@ -1,88 +1,163 @@
-# x402 Solana Protocol Implementation
+# Shaw 402 - Affiliate Commerce Platform
 
-A TypeScript implementation of the x402 payment protocol for Solana blockchain, featuring instant finality, sponsored transactions, and replay attack protection.
+A decentralized affiliate commerce platform on Solana with automated commission splits, featuring x402-protected payment processing and zero-knowledge privacy primitives.
 
 ## Overview
 
-The x402 protocol enables payment-gated access to web resources through Solana blockchain payments. This implementation provides:
+Shaw 402 is a data hub for affiliate commerce that enables merchants to run affiliate programs with automatic commission distribution. The platform combines Solana Pay for customer payments, autonomous payment processor agents, and x402 protocol for secure split execution.
 
-- **Instant Finality**: Client funds move immediately to merchant (on-chain settlement)
-- **Sponsored Transactions**: Facilitator pays gas fees, client authorizes SOL transfer
-- **Replay Protection**: Cryptographic nonce system prevents duplicate payments
-- **TypeScript**: Full type safety with Zod validation
-- **Production Ready**: PM2 process management, structured logging, error handling
+### Key Features
+
+- **Merchant Onboarding**: Register business and get autonomous payment processor agent
+- **Affiliate Programs**: Create trackable referral links with custom commission rates
+- **Solana Pay Integration**: Simple QR code payments for customers via mobile wallets
+- **Automated Splits**: Atomic USDC distribution to platform, affiliate, and merchant
+- **x402 Protected**: Split execution requires cryptographic payment authorization
+- **Zero-Knowledge Privacy**: Optional ZK commitments for confidential commission rates
+- **USDC Settlement**: All payments and commissions in USDC stablecoin
 
 ## Architecture
 
+### System Overview
+
 ```
-┌─────────────────┐         ┌──────────────┐         ┌─────────────────┐
-│                 │  HTTP   │              │  HTTP   │                 │
-│  Client App     │────────>│ Server App   │────────>│ Facilitator App │
-│                 │         │              │         │                 │
-│ • Signs auth    │         │ • x402 mw    │         │ • Verifies sig  │
-│ • Signs tx      │         │ • Protected  │         │ • Adds fee sig  │
-│ • Sends both    │         │   routes     │         │ • Broadcasts tx │
-└─────────────────┘         └──────────────┘         └─────────────────┘
-                                                                            │
-                                                                            ▼
-                                                                 ┌─────────────────┐
-                                                      │  Solana Devnet  │
-                                                      │  (Blockchain)   │
-                                                                 └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Shaw 402 Architecture                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+                    ┌──────────────────────┐
+                    │   Customer Wallet    │
+                    │  (Solana Mobile)     │
+                    └──────────┬───────────┘
+                               │ Scans QR
+                               │ Pays in USDC
+                               ▼
+                    ┌──────────────────────┐
+                    │  Payment Agent       │◄─────────┐
+                    │  (Merchant's)        │          │
+                    │                      │          │
+                    │  • Receives payment  │          │
+                    │  • Detects memo      │          │
+                    │  • Calls Hub API     │          │
+                    └──────────┬───────────┘          │
+                               │                      │
+                               ▼                      │
+┌─────────────────────────────────────────────────────┴────────┐
+│                      Hub API (Shaw 402)                      │
+│                                                               │
+│  • Merchant registration & agent provisioning                │
+│  • Affiliate registration & tracking                         │
+│  • Split calculation (platform/affiliate/merchant)           │
+│  • Payment split confirmation & recording                    │
+└───────────────────────────────┬───────────────────────────────┘
+                                │ Split instructions
+                                ▼
+                    ┌──────────────────────┐
+                    │  Payment Agent       │
+                    │                      │
+                    │  Creates x402 auth   │
+                    │  Signs with key      │
+                    └──────────┬───────────┘
+                               │ X-Payment header
+                               ▼
+                    ┌──────────────────────┐
+                    │  Facilitator         │
+                    │  (x402 Protected)    │
+                    │                      │
+                    │  • Verifies x402     │
+                    │  • Executes split    │
+                    │  • Atomic USDC tx    │
+                    └──────────┬───────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │  Solana Blockchain   │
+                    │                      │
+                    │  Platform ← USDC     │
+                    │  Affiliate ← USDC    │
+                    │  Merchant ← USDC     │
+                    └──────────────────────┘
 ```
 
-### Flow
+### Payment Flow
 
-1. **Client** creates and signs Solana transaction (client -> merchant transfer)
-2. **Client** signs authorization payload (for replay protection)
-3. **Client** sends both to server via HTTP header
-4. **Server** middleware extracts payment and forwards to facilitator
-5. **Facilitator** verifies signatures and checks nonce
-6. **Facilitator** adds signature as fee payer (sponsors transaction)
-7. **Facilitator** broadcasts to Solana blockchain
-8. **Instant Settlement**: Client's SOL moves to merchant on-chain
-9. **Server** delivers protected resource
+1. **Merchant Registration**
+   - Merchant registers business via Hub API
+   - Hub provisions autonomous payment processor agent
+   - Merchant receives affiliate program link
+
+2. **Affiliate Registration**
+   - Affiliate signs up through merchant's program
+   - Hub generates unique tracking link with referral code
+   - Affiliate shares link to promote merchant
+
+3. **Customer Purchase**
+   - Customer clicks affiliate link → redirected to merchant
+   - Merchant website generates Solana Pay QR code
+   - QR contains: agent wallet + USDC amount + affiliate ID in memo
+   - Customer scans and pays via Solana mobile wallet
+
+4. **Payment Detection**
+   - Agent monitors blockchain for incoming USDC
+   - Detects payment with affiliate ID in memo field
+   - Calls Hub API: `POST /api/agent/get-split-instructions`
+
+5. **Split Calculation**
+   - Hub looks up merchant configuration and affiliate data
+   - Calculates splits based on fee rates:
+     - Platform fee (e.g., 5%)
+     - Affiliate commission (e.g., 15%)
+     - Merchant amount (remaining ~80%)
+   - Returns split instructions with recipient addresses
+
+6. **x402-Protected Execution**
+   - Agent creates x402 payment authorization
+   - Signs authorization with agent private key
+   - Calls Facilitator: `POST /execute-split` (x402-protected)
+   - Facilitator verifies x402 payment in header
+   - Executes atomic 3-way USDC split transaction
+
+7. **Confirmation**
+   - Agent confirms to Hub: `POST /api/agent/confirm-split`
+   - Hub records transaction in database
+   - Updates affiliate earnings and statistics
 
 ## Project Structure
 
 ```
-x402_ts/
+shaw_402/
 ├── src/
+│   ├── agent/
+│   │   ├── index.ts                    # Payment processor agent entry
+│   │   └── payment-processor.ts        # Agent payment monitoring
 │   ├── facilitator/
-│   │   ├── index.ts                # Main facilitator app entry
-│   │   └── nonce.db                # SQLite database (runtime, gitignored)
+│   │   └── index.ts                    # x402 facilitator app
 │   ├── server/
-│   │   └── index.ts                # Main server app entry
-│   ├── errors/
-│   │   └── index.ts                # Custom error classes
+│   │   └── index.ts                    # Hub API server
 │   ├── lib/
-│   │   ├── api-logger.ts           # Structured logging
-│   │   ├── api-response-helpers.ts # Standardized responses
-│   │   ├── get-facilitator-config.ts  # Zod config validation
-│   │   ├── get-facilitator-context.ts # Dependency injection
-│   │   ├── get-server-config.ts    # Server config validation
-│   │   ├── get-server-context.ts   # Server context
-│   │   ├── nonce-database.ts       # SQLite nonce management
-│   │   ├── payment-request.ts      # Payment payload structures
-│   │   ├── solana-utils.ts         # Solana/Gill SDK utilities
-│   │   └── x402-middleware.ts      # Express middleware
+│   │   ├── affiliate-database.ts       # Merchant/affiliate data management
+│   │   ├── nonce-database.ts           # x402 nonce replay protection
+│   │   ├── solana-utils.ts             # Blockchain utilities
+│   │   ├── x402-middleware.ts          # x402 Express middleware
+│   │   ├── zk-privacy.ts               # Zero-knowledge primitives
+│   │   └── ...
 │   └── routes/
-│       ├── health.ts               # Health check endpoint
-│       ├── verify.ts               # Payment verification
-│       ├── settle.ts               # Payment settlement
-│       ├── nonce.ts                # Nonce management
-│       ├── stats.ts                # Statistics
-│       └── index.ts                # Route exports
-├── dist/                           # Compiled TypeScript output (gitignored)
-├── logs/                           # PM2 log files (gitignored)
-├── test-true-x402.mjs              # TRUE x402 instant finality test
-├── test-replay-attack.mjs          # Replay attack prevention test
-├── test-402-response.mjs           # HTTP 402 response test
-├── generate-test-client.mjs        # Generate test client wallet
-├── ecosystem.config.cjs            # PM2 configuration
-├── package.json                    # Dependencies and scripts
-├── tsconfig.json                   # TypeScript configuration
-└── .env                            # Environment configuration
+│       ├── agent-api.ts                # Hub endpoints for agents
+│       ├── execute-split.ts            # x402-protected split endpoint
+│       ├── solana-pay.ts               # Solana Pay QR generation
+│       ├── settle-usdc-split.ts        # Legacy split settlement
+│       └── ...
+├── docs/
+│   ├── AFFILIATE_PLATFORM.md           # Affiliate platform design
+│   ├── AGENT_SYSTEM.md                 # Payment processor agents
+│   ├── SOLANA_PAY_INTEGRATION.md       # Solana Pay implementation
+│   ├── UNIFIED_ARCHITECTURE_PROPOSAL.md # Architecture overview
+│   ├── USDC_SETTLEMENT.md              # USDC payment splitting
+│   ├── ZK_PRIVACY_ARCHITECTURE.md      # Zero-knowledge privacy
+│   └── SETUP.md                        # Detailed setup guide
+├── test-*.mjs                          # Test scripts
+├── package.json
+└── README.md                           # This file
 ```
 
 ## Quick Start
@@ -102,9 +177,24 @@ cp env.example .env
 
 Required environment variables:
 
-- `FACILITATOR_PRIVATE_KEY` - Facilitator's private key (base58)
-- `SOLANA_RPC_URL` - Solana RPC endpoint (default: devnet)
-- `SIMULATE_TRANSACTIONS` - Set to `false` for real blockchain transactions
+```env
+# Facilitator (x402 service)
+FACILITATOR_PORT=3001
+FACILITATOR_PRIVATE_KEY=<base58_private_key>
+
+# Hub Server
+SERVER_PORT=3000
+PLATFORM_WALLET=<platform_usdc_wallet>
+USDC_MINT_ADDRESS=<usdc_mint_address>
+
+# Solana
+SOLANA_RPC_URL=https://api.devnet.solana.com
+SOLANA_NETWORK=devnet
+
+# Database
+AFFILIATE_DB_PATH=./data/affiliates.db
+NONCE_DB_PATH=./data/nonce.db
+```
 
 ### 3. Build TypeScript
 
@@ -112,302 +202,377 @@ Required environment variables:
 npm run build
 ```
 
-### 4. Start Applications
+### 4. Initialize Database
 
 ```bash
-# Start both facilitator and server with PM2
+# Create data directory
+mkdir -p data
+
+# Database will be created automatically on first run
+```
+
+### 5. Start Services
+
+```bash
+# Start all services with PM2
 npm start
+
+# Or run individual services in development:
+npm run dev:server      # Hub API
+npm run dev:facilitator # x402 Facilitator
+npm run dev:agent       # Payment Processor Agent
 
 # View logs
 npm run logs
 
-# Stop applications
+# Stop all services
 npm stop
 ```
 
-The facilitator runs on port 3001, server on port 3000 (configurable in .env).
-
-## Testing
-
-### Run All Tests
+### 6. Test the Platform
 
 ```bash
-# Make sure apps are running first
-npm start
+# Test Solana Pay integration
+npm run test:solana-pay
 
-# Run main test (TRUE x402 instant finality)
+# Test USDC payment split
+npm run test:usdc
+
+# Test x402 protocol
 npm test
-
-# Test HTTP 402 response (missing payment)
-npm run test:402
-
-# Test replay attack prevention
-npm run test:replay
-```
-
-### Generate Test Client Wallet
-
-```bash
-npm run generate:client
-# Creates test-client-keypair.json with a new wallet
-```
-
-### Fund Test Wallet on Devnet
-
-```bash
-solana airdrop 1 <YOUR_CLIENT_PUBLIC_KEY> --url devnet
-```
-
-## How It Works
-
-### TRUE x402 Protocol (Instant Finality)
-
-This implementation uses **sponsored transactions** for TRUE x402 instant finality:
-
-1. **Client Side**:
-   - Creates authorization payload with nonce
-   - Signs authorization (Ed25519 signature for replay protection)
-   - Creates Solana transaction (client -> merchant transfer)
-   - Signs transaction with their private key
-   - Sends both to server
-
-2. **Facilitator Side**:
-   - Verifies authorization signature
-   - Checks nonce is unused (prevents replay attacks)
-   - Marks nonce as used immediately
-   - Deserializes client-signed transaction
-   - Adds facilitator signature as fee payer
-   - Broadcasts to Solana blockchain
-   - Client's SOL moves to merchant instantly
-
-3. **Result**:
-   - Client's funds committed on-chain (instant finality)
-   - Facilitator paid gas fee
-   - No debt tracking needed
-   - Single atomic transaction
-
-### Payment Request Structure
-
-```typescript
-{
-  payload: {
-    amount: "10000000",           // Amount in lamports
-    recipient: "merchant_address", // Merchant Solana address
-    resourceId: "/api/resource",   // Resource identifier
-    resourceUrl: "/api/resource",  // Resource URL
-    nonce: "unique_hex_string",    // Cryptographic nonce
-    timestamp: 1234567890,         // Unix timestamp
-    expiry: 1234571490             // Expiration timestamp
-  },
-  signature: "base58_signature",   // Client's Ed25519 signature
-  clientPublicKey: "client_pub",   // Client's Solana public key
-  signedTransaction: "base64_tx"   // Client-signed Solana transaction
-}
-```
-
-### Nonce System (Replay Protection)
-
-The nonce database prevents replay attacks:
-
-- Each payment request includes a unique nonce
-- Nonce is stored and marked as "used" during verification
-- Subsequent requests with same nonce are rejected
-- Nonces expire after 24 hours (configurable)
-- Automatic cleanup removes expired nonces
-
-### Protected Endpoints
-
-The server provides examples of payment-protected routes:
-
-```typescript
-// Public endpoint (no payment required)
-GET /public
-
-// Protected endpoint (requires x402 payment)
-GET /api/premium-data
-  - Requires 0.01 SOL payment
-  - Returns premium content after payment verification
-
-// Other protected routes
-POST /api/generate-content
-GET /api/download/:fileId
-GET /api/tier/:tier
 ```
 
 ## API Reference
 
-### Facilitator Endpoints
+### Hub API Endpoints
 
-**Health Check**
+**For Agents** (requires Bearer token authentication)
 
-```
-GET /health
-Response: { success: true, data: { status: "healthy", ... } }
-```
+```http
+POST /api/agent/get-split-instructions
+Authorization: Bearer <agent_token>
+Content-Type: application/json
 
-**Verify Payment**
+{
+  "agentWallet": "agent_pubkey",
+  "amount": "1000000",  // USDC micro-units (6 decimals)
+  "referralCode": "AFF123",
+  "paymentTxSignature": "tx_signature"
+}
 
-```
-POST /verify
-Body: { paymentRequest: "serialized_payment_request" }
-Response: { success: true, data: { verified: true, ... } }
-```
-
-**Settle Payment**
-
-```
-POST /settle
-Body: { paymentRequest: "serialized_payment_request" }
-Response: { success: true, data: { transactionSignature: "...", ... } }
-```
-
-**Get Nonce Status**
-
-```
-GET /nonce/:nonce
-Response: { success: true, data: { nonce: "...", usedAt: ..., ... } }
-```
-
-**Get Statistics**
-
-```
-GET /stats
-Response: {
-  success: true,
-  data: {
-    totalNonces: 25,
-    usedNonces: 25,
-    activeNonces: 0
+Response:
+{
+  "success": true,
+  "data": {
+    "splitId": "split_1699...",
+    "merchantId": "merchant_abc",
+    "totalAmount": "1000000",
+    "recipients": [
+      {
+        "role": "platform",
+        "wallet": "platform_pubkey",
+        "amount": "50000",
+        "usdcAccount": "platform_usdc_account"
+      },
+      {
+        "role": "affiliate",
+        "wallet": "affiliate_pubkey",
+        "amount": "150000",
+        "usdcAccount": "affiliate_usdc_account"
+      },
+      {
+        "role": "merchant",
+        "wallet": "merchant_pubkey",
+        "amount": "800000",
+        "usdcAccount": "merchant_usdc_account"
+      }
+    ],
+    "facilitatorUrl": "http://localhost:3001",
+    "calculation": {
+      "platformFee": "50000",
+      "affiliateCommission": "150000",
+      "merchantAmount": "800000"
+    }
   }
 }
 ```
 
-### Server Endpoints
+```http
+POST /api/agent/confirm-split
+Authorization: Bearer <agent_token>
+Content-Type: application/json
 
-**Health Check**
+{
+  "splitId": "split_1699...",
+  "settlementTx": "tx_signature",
+  "status": "completed",
+  "agentWallet": "agent_pubkey",
+  "referralCode": "AFF123"
+}
 
-```
-GET /health
-Response: { success: true, data: { status: "healthy", facilitator: {...} } }
+Response:
+{
+  "success": true,
+  "data": {
+    "splitId": "split_1699...",
+    "status": "recorded",
+    "message": "Split completion confirmed and recorded"
+  }
+}
 ```
 
-**Public Endpoint**
+### Facilitator Endpoints
 
-```
-GET /public
-Response: { success: true, data: { message: "No payment required" } }
+**x402-Protected Split Execution**
+
+```http
+POST /execute-split
+X-Payment: <x402_payment_authorization>
+Content-Type: application/json
+
+{
+  "splitId": "split_1699...",
+  "recipients": [
+    {
+      "role": "platform",
+      "wallet": "platform_pubkey",
+      "amount": "50000",
+      "usdcAccount": "platform_usdc_account"
+    },
+    // ... more recipients
+  ],
+  "agentUSDCAccount": "agent_usdc_account",
+  "usdcMint": "usdc_mint_address",
+  "agentPrivateKey": "base58_private_key"
+}
+
+Response:
+{
+  "success": true,
+  "data": {
+    "splitId": "split_1699...",
+    "transactionSignature": "5xK7...",
+    "explorerUrl": "https://explorer.solana.com/tx/5xK7...?cluster=devnet",
+    "recipients": [...],
+    "x402Payment": {
+      "verified": true,
+      "agentWallet": "agent_pubkey",
+      "transactionSignature": "4mN9..."
+    }
+  }
+}
 ```
 
-**Protected Endpoint**
+**Other Facilitator Endpoints**
 
+```http
+GET /health              # Health check
+POST /verify             # Verify x402 payment
+POST /settle             # Settle x402 payment
+GET /nonce/:nonce        # Get nonce status
+GET /stats               # Get statistics
+POST /cleanup            # Cleanup expired nonces
 ```
-GET /api/premium-data
-Headers: { X-Payment: "serialized_payment_request" }
-Response: { success: true, data: { secret: "premium content", ... } }
+
+### Solana Pay Endpoints
+
+```http
+POST /solana-pay/:endpoint
+Content-Type: application/json
+
+{
+  "account": "customer_pubkey"
+}
+
+Response:
+{
+  "transaction": "base64_serialized_transaction",
+  "message": "Payment for Order #123"
+}
 ```
+
+```http
+GET /solana-pay/qr/:endpoint
+Response: QR code image (PNG)
+```
+
+```http
+GET /solana-pay/status/:reference
+Response: {
+  "status": "confirmed",
+  "signature": "tx_signature",
+  "amount": "1000000"
+}
+```
+
+## How x402 is Used
+
+Unlike typical x402 implementations where customers pay for access, Shaw 402 uses x402 to protect the **split execution service**:
+
+### Why This Architecture?
+
+1. **Customer Experience**: Customers pay simply via Solana Pay QR codes (no x402 complexity)
+2. **Service Protection**: x402 protects the facilitator's split execution service
+3. **Agent Authorization**: Only authorized agents can request splits
+4. **Replay Protection**: x402 nonce system prevents duplicate split requests
+5. **Fair Pricing**: Agents pay small fee to use split execution service
+
+### x402 Flow for Split Execution
+
+```typescript
+// 1. Agent creates x402 payment authorization
+const paymentRequest = {
+  payload: {
+    amount: "1000",           // Small fee for split service
+    recipient: facilitatorAddress,
+    resourceId: "/execute-split",
+    resourceUrl: "/execute-split",
+    nonce: generateNonce(),
+    timestamp: Date.now(),
+    expiry: Date.now() + 60000
+  },
+  signature: signPayload(payload, agentPrivateKey),
+  clientPublicKey: agentPublicKey
+};
+
+// 2. Agent calls facilitator with x402 header
+const response = await fetch('http://facilitator:3001/execute-split', {
+  method: 'POST',
+  headers: {
+    'X-Payment': JSON.stringify(paymentRequest),
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    splitId,
+    recipients,
+    agentUSDCAccount,
+    usdcMint,
+    agentPrivateKey
+  })
+});
+
+// 3. Facilitator verifies x402 and executes split
+// - Verifies signature and nonce
+// - Validates agent keypair matches x402 auth
+// - Executes atomic USDC split transaction
+```
+
+## Zero-Knowledge Privacy
+
+Shaw 402 includes foundational ZK primitives for privacy-preserving affiliate commerce:
+
+- **Poseidon Hash Commitments**: Hide affiliate IDs and commission amounts
+- **NaCl Box Encryption**: Secure agent-server communication
+- **ZK Circuit Integration**: Ready for SNARKs/STARKs (future)
+
+See [docs/ZK_PRIVACY_ARCHITECTURE.md](docs/ZK_PRIVACY_ARCHITECTURE.md) for details.
 
 ## Development
 
 ### Run in Development Mode
 
 ```bash
-# Terminal 1: Facilitator
+# Terminal 1: Hub API
+npm run dev:server
+
+# Terminal 2: Facilitator
 npm run dev:facilitator
 
-# Terminal 2: Server
-npm run dev:server
+# Terminal 3: Payment Processor Agent
+npm run dev:agent
 ```
 
 ### Code Quality
 
 ```bash
-# Run linter
-npm run lint
-
-# Format code
-npm run fmt
-
-# Check formatting
-npm run fmt:check
+npm run lint          # Run ESLint
+npm run fmt           # Format with Prettier
+npm run fmt:check     # Check formatting
 ```
 
 ### Technology Stack
 
 - **Runtime**: Node.js with TypeScript
 - **Framework**: Express.js
-- **Blockchain**: Solana (via Gill SDK and @solana/web3.js)
-- **Database**: SQLite3 (for nonce management)
+- **Blockchain**: Solana (Gill SDK + @solana/web3.js)
+- **Payments**: Solana Pay, @solana/spl-token (USDC)
+- **Database**: SQLite3
+- **Privacy**: circomlibjs (Poseidon), tweetnacl (encryption)
 - **Process Management**: PM2
 - **Validation**: Zod
-- **Logging**: Structured logging with timestamps
-- **Testing**: Custom test scripts using native fetch
 
-## Configuration
+## Documentation
 
-### Environment Variables
+Detailed documentation available in [`docs/`](docs/):
 
-See `env.example` for all available configuration options:
+- [**UNIFIED_ARCHITECTURE_PROPOSAL.md**](docs/UNIFIED_ARCHITECTURE_PROPOSAL.md) - Complete system architecture
+- [**AFFILIATE_PLATFORM.md**](docs/AFFILIATE_PLATFORM.md) - Affiliate platform design
+- [**AGENT_SYSTEM.md**](docs/AGENT_SYSTEM.md) - Payment processor agents
+- [**SOLANA_PAY_INTEGRATION.md**](docs/SOLANA_PAY_INTEGRATION.md) - Solana Pay implementation
+- [**USDC_SETTLEMENT.md**](docs/USDC_SETTLEMENT.md) - USDC split mechanics
+- [**ZK_PRIVACY_ARCHITECTURE.md**](docs/ZK_PRIVACY_ARCHITECTURE.md) - Zero-knowledge privacy
+- [**SETUP.md**](docs/SETUP.md) - Detailed setup instructions
+
+## Security Considerations
+
+- **Private Keys**: Never commit `.env` or private keys to git
+- **x402 Authorization**: Validates agent identity before split execution
+- **Nonce Replay Protection**: Prevents duplicate split requests
+- **Atomic Transactions**: Splits execute atomically or fail completely
+- **HTTPS**: Use HTTPS in production for all HTTP communication
+- **Rate Limiting**: Implement rate limiting on all public endpoints
+- **Input Validation**: All inputs validated with Zod schemas
+- **Database Encryption**: Encrypt sensitive data in production
+
+## Production Deployment
+
+### Recommended Setup
+
+1. **Separate Services**: Deploy Hub, Facilitator, and Agents separately
+2. **Database**: Use PostgreSQL instead of SQLite for production
+3. **Secrets Management**: Use environment-specific secret managers
+4. **Monitoring**: Set up PM2 monitoring and alerts
+5. **Load Balancing**: Use nginx or similar for reverse proxy
+6. **HTTPS**: Configure SSL certificates
+7. **Mainnet**: Switch to Solana mainnet-beta RPC endpoints
+8. **USDC Mint**: Use mainnet USDC mint address
+
+### Environment Variables for Production
 
 ```env
-# Facilitator
-FACILITATOR_PORT=3001
-FACILITATOR_PRIVATE_KEY=<base58_private_key>
-SOLANA_RPC_URL=https://api.devnet.solana.com
+NODE_ENV=production
+SOLANA_NETWORK=mainnet-beta
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+USDC_MINT_ADDRESS=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
 SIMULATE_TRANSACTIONS=false
-MAX_PAYMENT_AMOUNT=1000000000
 
-# Server
-SERVER_PORT=3000
-FACILITATOR_URL=http://localhost:3001
-MERCHANT_SOLANA_ADDRESS=<merchant_public_key>
-
-# Solana
-SOLANA_NETWORK=devnet
+# Use secure secrets management
+FACILITATOR_PRIVATE_KEY=<from_secrets_manager>
 ```
-
-### PM2 Configuration
-
-The `ecosystem.config.cjs` file configures PM2 process management:
-
-- Auto-restart on crashes
-- Environment variable loading
-- Separate log files for each app
-- Memory limits and monitoring
 
 ## Troubleshooting
 
 ### Common Issues
 
-**Apps won't start**
+**Agent not detecting payments**
+- Check agent is monitoring correct wallet address
+- Verify Solana RPC endpoint is accessible
+- Check agent logs for blockchain polling errors
 
-- Check `.env` file exists and has valid `FACILITATOR_PRIVATE_KEY`
-- Ensure ports 3000 and 3001 are available
-- Check PM2 logs: `npm run logs`
+**Split execution fails**
+- Ensure agent has sufficient USDC balance
+- Verify all recipient addresses are valid
+- Check x402 authorization is correctly signed
 
-**Tests fail with "insufficient SOL"**
+**x402 payment verification fails**
+- Verify nonce is unique and not expired
+- Check signature matches agent public key
+- Ensure facilitator is running and accessible
 
-- Fund test client wallet: `solana airdrop 1 <address> --url devnet`
-- Check `SIMULATE_TRANSACTIONS=false` in `.env`
-
-**Replay attack test succeeds twice**
-
-- Restart facilitator to reset nonce database
-- Check facilitator logs for nonce verification
-
-**Transaction fails on-chain**
-
-- Ensure facilitator has SOL for gas fees
-- Check Solana devnet is operational
-- Verify RPC endpoint is accessible
-
-## Security Considerations
-
-- **Private Keys**: Never commit `.env` or keypair files to git
-- **Nonce Database**: Stored locally, contains transaction history
-- **HTTPS**: Use HTTPS in production for all HTTP communication
-- **Rate Limiting**: Implement rate limiting on facilitator endpoints
-- **Input Validation**: All inputs validated with Zod schemas
-- **Error Handling**: Structured errors without sensitive data exposure
+**Database errors**
+- Check database file permissions
+- Verify SQLite3 is installed
+- Ensure data directory exists
 
 ## License
 
@@ -415,23 +580,23 @@ MIT
 
 ## Contributing
 
-This implementation follows the Gill Node Express template patterns and addresses PR feedback for clean, maintainable code. Contributions should maintain:
+Contributions welcome! Please maintain:
 
-- TypeScript with strict type checking
+- TypeScript strict mode
 - ES modules (import/export)
+- Zod validation for all inputs
 - Structured error handling
-- Native fetch (no axios)
-- Direct module consumption (no HTTP calls to own endpoints)
-- PM2 process management
-- Zod validation
-- Context pattern for dependency injection
+- Comprehensive tests
+- Documentation for new features
 
 ## Credits
 
 Built with:
 
+- [Solana](https://solana.com/) - High-performance blockchain
+- [Solana Pay](https://solanapay.com/) - Mobile wallet payments
 - [Gill SDK](https://www.gillsdk.com/) - Solana TypeScript SDK
 - [@solana/web3.js](https://github.com/solana-labs/solana-web3.js) - Solana JavaScript API
 - [Express.js](https://expressjs.com/) - Web framework
 - [PM2](https://pm2.keymetrics.io/) - Process manager
-- [Zod](https://github.com/colinhacks/zod) - Schema validation
+- [circomlibjs](https://github.com/iden3/circomlibjs) - Zero-knowledge primitives
