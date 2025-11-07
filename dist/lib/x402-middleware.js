@@ -88,6 +88,7 @@ export class X402Middleware {
                     recipient: paymentRequest.payload.recipient,
                     resourceId: paymentRequest.payload.resourceId,
                     transactionSignature: settlementResult.transactionSignature || '',
+                    clientPublicKey: paymentRequest.clientPublicKey,
                 };
                 // Continue to the next middleware/route handler
                 next();

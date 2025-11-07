@@ -36,6 +36,7 @@ export interface PaymentSplitData {
     affiliateCommission: string;
     merchantAmount: string;
     status: 'pending' | 'completed' | 'failed';
+    timestamp?: number;
     errorMessage?: string;
 }
 export declare class AffiliateDatabase {

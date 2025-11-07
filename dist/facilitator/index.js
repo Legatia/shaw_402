@@ -5,10 +5,13 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { PublicKey, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 import { getFacilitatorContext } from '../lib/get-facilitator-context.js';
-import { healthCheckRoute, verifyPaymentRoute, settlePaymentRoute, getNonceRoute, getStatsRoute, cleanupNoncesRoute, } from '../routes/index.js';
+import { healthCheckRoute, verifyPaymentRoute, settlePaymentRoute, getNonceRoute, getStatsRoute, cleanupNoncesRoute, executeSplitRoute, } from '../routes/index.js';
 import settleUSDCSplitRoute from '../routes/settle-usdc-split.js';
 import { REQUEST_BODY_LIMIT, CLEANUP_INTERVAL_MS } from '../lib/constants.js';
+import { createX402MiddlewareWithUtils } from '../lib/x402-middleware.js';
 // Initialize context
 const context = await getFacilitatorContext();
 const app = express();
@@ -43,8 +46,28 @@ app.post('/settle', settlePaymentRoute({
         facilitatorPrivateKey: context.config.facilitatorPrivateKey,
     },
 }));
-// USDC Split Settlement (for affiliate commissions)
+// USDC Split Settlement (for affiliate commissions - legacy without x402)
 app.use('/settle-usdc-split', settleUSDCSplitRoute);
+// x402-Protected Split Execution (new architecture with x402 auth)
+const executeSplitMiddleware = createX402MiddlewareWithUtils({
+    amount: '1000', // Optional: 0.000001 SOL fee for split service
+    payTo: context.facilitatorAddress.toString(),
+    asset: 'SOL',
+    network: `solana-${context.config.solanaNetwork || 'devnet'}`,
+}, {
+    facilitatorUrl: `http://localhost:${context.config.port}`, // Self-reference
+    timeout: 30000,
+    retryAttempts: 3,
+});
+app.post('/execute-split', executeSplitMiddleware.middleware, executeSplitRoute({
+    solanaUtils: context.solanaUtils,
+    nonceDb: context.nonceDb,
+    facilitatorAddress: new PublicKey(context.facilitatorAddress.toString()),
+    facilitatorKeypair: Keypair.fromSecretKey(bs58.decode(context.config.facilitatorPrivateKey)),
+    config: {
+        facilitatorPrivateKey: context.config.facilitatorPrivateKey,
+    },
+}));
 app.get('/nonce/:nonce', getNonceRoute({
     nonceDb: context.nonceDb,
 }));

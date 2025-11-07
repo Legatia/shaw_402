@@ -17,6 +17,7 @@ import { SolanaUtils } from '../lib/solana-utils.js';
 import { NonceDatabase } from '../lib/nonce-database.js';
 import merchantRoutes, { initializeMerchantRoutes } from '../routes/merchant.js';
 import solanaPayRoutes, { initializeSolanaPayRoutes } from '../routes/solana-pay.js';
+import agentAPIRoutes, { initializeAgentAPI } from '../routes/agent-api.js';
 import { PublicKey } from '@solana/web3.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -90,6 +91,14 @@ initializeSolanaPayRoutes({
   iconUrl: process.env.SOLANA_PAY_ICON_URL,
 });
 app.use('/api/solana-pay', solanaPayRoutes);
+
+// Initialize Agent API routes (for payment processor agents)
+initializeAgentAPI({
+  affiliateDb,
+  platformWallet: process.env.PLATFORM_WALLET || '',
+  usdcMint: process.env.USDC_MINT_ADDRESS || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+});
+app.use('/api/agent', agentAPIRoutes);
 
 // Config endpoint for frontend
 app.get('/api/config', (_req, res) => {

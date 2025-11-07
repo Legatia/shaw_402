@@ -23,6 +23,7 @@ export interface PaymentInfo {
     recipient: string;
     resourceId: string;
     transactionSignature: string;
+    clientPublicKey: string;
 }
 export interface VerificationResult {
     isValid: boolean;

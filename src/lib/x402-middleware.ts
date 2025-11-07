@@ -27,6 +27,7 @@ export interface PaymentInfo {
   recipient: string;
   resourceId: string;
   transactionSignature: string;
+  clientPublicKey: string;
 }
 
 export interface VerificationResult {
@@ -176,6 +177,7 @@ export class X402Middleware {
           recipient: paymentRequest.payload.recipient,
           resourceId: paymentRequest.payload.resourceId,
           transactionSignature: settlementResult.transactionSignature || '',
+          clientPublicKey: paymentRequest.clientPublicKey,
         };
 
         // Continue to the next middleware/route handler
