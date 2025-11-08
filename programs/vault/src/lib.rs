@@ -31,7 +31,7 @@ pub mod shaw_vault {
 
     /// Deposit SOL into the vault
     /// Merchants deposit SOL as collateral which can be staked
-    pub fn deposit_sol(ctx: Context<DepositSol>, amount: u64) -> Result<()> {
+    pub fn deposit_sol(ctx: Context<DepositSol>, amount: u64, lock_period: LockPeriod) -> Result<()> {
         let vault = &ctx.accounts.vault;
         let merchant_deposit = &mut ctx.accounts.merchant_deposit;
 
@@ -76,6 +76,12 @@ pub mod shaw_vault {
             merchant_deposit.last_volume_reset = current_time;
             merchant_deposit.monthly_unique_customers = 0;
             merchant_deposit.current_yield_bps = 300; // Start with base 3% APY
+
+            // Initialize lock period and profit sharing
+            merchant_deposit.lock_period = lock_period.clone();
+            merchant_deposit.unlock_time = current_time + lock_period.duration_seconds();
+            merchant_deposit.platform_profit_earned = 0;
+            merchant_deposit.profit_share_allocated = 0;
         }
 
         msg!("Deposited {} lamports from merchant {}", amount, ctx.accounts.merchant.key());
@@ -83,7 +89,7 @@ pub mod shaw_vault {
     }
 
     /// Deposit SPL tokens (USDC) into the vault
-    pub fn deposit_token(ctx: Context<DepositTokenAccounts>, amount: u64) -> Result<()> {
+    pub fn deposit_token(ctx: Context<DepositTokenAccounts>, amount: u64, lock_period: LockPeriod) -> Result<()> {
         let vault = &ctx.accounts.vault;
         let merchant_deposit = &mut ctx.accounts.merchant_deposit;
 
@@ -124,6 +130,12 @@ pub mod shaw_vault {
             merchant_deposit.last_volume_reset = current_time;
             merchant_deposit.monthly_unique_customers = 0;
             merchant_deposit.current_yield_bps = 300; // Start with base 3% APY
+
+            // Initialize lock period and profit sharing
+            merchant_deposit.lock_period = lock_period.clone();
+            merchant_deposit.unlock_time = current_time + lock_period.duration_seconds();
+            merchant_deposit.platform_profit_earned = 0;
+            merchant_deposit.profit_share_allocated = 0;
         }
 
         msg!("Deposited {} tokens from merchant {}", amount, ctx.accounts.merchant.key());
@@ -140,6 +152,12 @@ pub mod shaw_vault {
 
         // Calculate current rewards using dynamic yield
         let current_time = Clock::get()?.unix_timestamp;
+
+        // Enforce lock period
+        require!(
+            current_time >= merchant_deposit.unlock_time,
+            VaultError::DepositStillLocked
+        );
         let time_elapsed = current_time - merchant_deposit.deposited_at;
         let days_elapsed = time_elapsed / 86400;
 
@@ -260,10 +278,10 @@ pub mod shaw_vault {
         let time_elapsed = current_time - merchant_deposit.deposited_at;
         let days_elapsed = time_elapsed / 86400;
 
-        // Calculate dynamic yield APY based on performance
+        // Calculate dynamic yield APY based on lock period, volume, and profit share
         let yield_bps = calculate_dynamic_yield(
-            merchant_deposit.current_month_volume,
-            days_elapsed,
+            merchant_deposit,
+            merchant_deposit.total_deposited,
         );
 
         // Convert BPS to percentage (e.g., 1200 BPS = 12%)
@@ -333,11 +351,10 @@ pub mod shaw_vault {
             .checked_add(1)
             .ok_or(VaultError::MathOverflow)?;
 
-        // Recalculate current yield based on new metrics
-        let days_since_deposit = (current_time - merchant_deposit.deposited_at) / 86400;
+        // Recalculate current yield based on new metrics (lock period, volume, profit share)
         merchant_deposit.current_yield_bps = calculate_dynamic_yield(
-            merchant_deposit.current_month_volume,
-            days_since_deposit,
+            merchant_deposit,
+            merchant_deposit.total_deposited,
         );
 
         msg!("Order recorded: ${} | Total volume: ${} | Current yield: {}% APY",
@@ -367,55 +384,113 @@ pub mod shaw_vault {
 
         Ok(tier)
     }
+
+    /// Record platform profit from merchant's orders
+    /// Called by platform after order processing to track profit sharing
+    /// Platform gives up to 50% of profit back to merchant as yield boost
+    pub fn record_platform_profit(
+        ctx: Context<RecordPlatformProfit>,
+        platform_profit_amount: u64,
+    ) -> Result<()> {
+        let merchant_deposit = &mut ctx.accounts.merchant_deposit;
+
+        // Track total platform profit earned from this merchant
+        merchant_deposit.platform_profit_earned = merchant_deposit
+            .platform_profit_earned
+            .checked_add(platform_profit_amount)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Allocate 50% of platform profit to merchant as yield boost
+        let profit_share = platform_profit_amount
+            .checked_div(2)
+            .ok_or(VaultError::MathOverflow)?;
+
+        merchant_deposit.profit_share_allocated = merchant_deposit
+            .profit_share_allocated
+            .checked_add(profit_share)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Recalculate yield with new profit share
+        merchant_deposit.current_yield_bps = calculate_dynamic_yield(
+            merchant_deposit,
+            merchant_deposit.total_deposited,
+        );
+
+        msg!(
+            "Platform profit recorded: ${} | Merchant profit share: ${} | New yield: {}%",
+            platform_profit_amount / 1_000000,
+            profit_share / 1_000000,
+            merchant_deposit.current_yield_bps as f64 / 100.0
+        );
+
+        Ok(())
+    }
 }
 
 // ============================================================================
 // Yield Calculation Functions
 // ============================================================================
 
-/// Calculate dynamic yield based on volume and loyalty
-/// Returns yield in basis points (BPS), e.g., 1200 = 12%
-fn calculate_dynamic_yield(monthly_volume_usd: u64, days_deposited: i64) -> u16 {
-    const BASE_YIELD_BPS: u16 = 300;        // 3.00%
-    const MAX_VOLUME_BONUS_BPS: u16 = 600;  // 6.00%
-    const MAX_LOYALTY_BONUS_BPS: u16 = 300; // 3.00%
-    const MAX_TOTAL_YIELD_BPS: u16 = 1200;  // 12.00%
+/// Calculate dynamic yield based on lock period, volume, and profit sharing
+/// Returns yield in basis points (BPS), e.g., 650 = 6.5%
+///
+/// New Economic Model (MVP):
+/// - Base: 3% guaranteed
+/// - Volume Bonus: Linear scaling based on monthly volume
+/// - Profit Share Bonus: Up to 50% of platform profit from merchant's orders
+/// - Capped at lock period maximum APY
+fn calculate_dynamic_yield(merchant_deposit: &MerchantDeposit, total_deposited_value: u64) -> u16 {
+    const BASE_YIELD_BPS: u16 = 300; // 3.00% guaranteed
+    const TARGET_MONTHLY_VOLUME: u64 = 1_000_000_000000; // $1M target for max volume bonus
 
-    // Volume bonus: 0-6% based on monthly volume
-    // $1M/month = 6% max
-    let volume_bonus_bps = if monthly_volume_usd >= 1_000_000_000000 { // $1M in micro-units
-        MAX_VOLUME_BONUS_BPS
-    } else {
-        // Linear interpolation: (volume / 1M) * 6%
-        let volume_ratio = (monthly_volume_usd as u128)
-            .checked_mul(MAX_VOLUME_BONUS_BPS as u128)
+    // 1. Start with base 3%
+    let mut yield_bps = BASE_YIELD_BPS;
+
+    // 2. Calculate profit share bonus (up to 50% of platform profit)
+    // Convert profit share to APY percentage
+    let profit_share_bonus_bps = if total_deposited_value > 0 {
+        // profit_share_allocated is in micro-units (USDC 6 decimals)
+        // Calculate as percentage of deposit
+        let bonus_ratio = (merchant_deposit.profit_share_allocated as u128)
+            .checked_mul(10000) // Convert to basis points
             .unwrap_or(0)
-            .checked_div(1_000_000_000000)
+            .checked_div(total_deposited_value as u128)
             .unwrap_or(0);
-        volume_ratio.min(MAX_VOLUME_BONUS_BPS as u128) as u16
+        bonus_ratio.min(u16::MAX as u128) as u16
+    } else {
+        0
     };
 
-    // Loyalty bonus: 0-3% based on time deposited
-    // 365 days = 3% max
-    let loyalty_bonus_bps = if days_deposited >= 365 {
-        MAX_LOYALTY_BONUS_BPS
+    yield_bps = yield_bps.saturating_add(profit_share_bonus_bps);
+
+    // 3. Calculate available space for volume bonus
+    let lock_max_apy = merchant_deposit.lock_period.max_apy_bps();
+    let available_for_volume = lock_max_apy.saturating_sub(yield_bps);
+
+    // 4. Calculate volume bonus (linear scaling)
+    // Scales from 0 to available_for_volume based on monthly volume
+    let volume_bonus_bps = if available_for_volume > 0 {
+        if merchant_deposit.current_month_volume >= TARGET_MONTHLY_VOLUME {
+            available_for_volume
+        } else {
+            // Linear: (current_volume / target_volume) * available_space
+            let volume_ratio = (merchant_deposit.current_month_volume as u128)
+                .checked_mul(available_for_volume as u128)
+                .unwrap_or(0)
+                .checked_div(TARGET_MONTHLY_VOLUME)
+                .unwrap_or(0);
+            volume_ratio.min(available_for_volume as u128) as u16
+        }
     } else {
-        // Linear interpolation: (days / 365) * 3%
-        let loyalty_ratio = (days_deposited as u128)
-            .checked_mul(MAX_LOYALTY_BONUS_BPS as u128)
-            .unwrap_or(0)
-            .checked_div(365)
-            .unwrap_or(0);
-        loyalty_ratio.min(MAX_LOYALTY_BONUS_BPS as u128) as u16
+        0
     };
 
-    // Total yield (capped at 12%)
-    let total_yield_bps = BASE_YIELD_BPS
-        .saturating_add(volume_bonus_bps)
-        .saturating_add(loyalty_bonus_bps)
-        .min(MAX_TOTAL_YIELD_BPS);
+    yield_bps = yield_bps.saturating_add(volume_bonus_bps);
 
-    total_yield_bps
+    // 5. Cap at lock period maximum
+    yield_bps = yield_bps.min(lock_max_apy);
+
+    yield_bps
 }
 
 /// Calculate merchant tier (0=Bronze, 1=Silver, 2=Gold, 3=Platinum)
@@ -619,6 +694,26 @@ pub struct GetMerchantTier<'info> {
     pub merchant: Signer<'info>,
 }
 
+#[derive(Accounts)]
+pub struct RecordPlatformProfit<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        mut,
+        seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()],
+        bump = merchant_deposit.bump
+    )]
+    pub merchant_deposit: Account<'info, MerchantDeposit>,
+
+    /// Platform authority or agent that processed the order
+    pub platform: Signer<'info>,
+
+    /// Merchant wallet (for verification)
+    /// CHECK: Verified via PDA seeds
+    pub merchant: AccountInfo<'info>,
+}
+
 // ============================================================================
 // Account Structures
 // ============================================================================
@@ -679,16 +774,57 @@ pub struct MerchantDeposit {
     pub monthly_unique_customers: u32,
     /// Current yield in basis points (e.g., 1200 = 12%)
     pub current_yield_bps: u16,
+
+    // Lock period and profit sharing
+    /// Lock period selection (6mo/1yr/3yr/5yr)
+    pub lock_period: LockPeriod,
+    /// Unlock timestamp (deposited_at + lock_period)
+    pub unlock_time: i64,
+    /// Platform profit earned from this merchant's orders (for profit share calculation)
+    pub platform_profit_earned: u64,
+    /// Profit share bonus allocated (up to 50% of platform profit)
+    pub profit_share_allocated: u64,
 }
 
 impl MerchantDeposit {
-    pub const LEN: usize = 32 + 32 + 1 + 8 + 8 + 1 + 8 + 1 + 8 + 8 + 8 + 8 + 4 + 2;
+    // 32 + 32 + 1 + 8 + 8 + 1 + 8 + 1 + 8 + 8 + 8 + 8 + 4 + 2 + 1 + 8 + 8 + 8
+    pub const LEN: usize = 32 + 32 + 1 + 8 + 8 + 1 + 8 + 1 + 8 + 8 + 8 + 8 + 4 + 2 + 1 + 8 + 8 + 8;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
 pub enum DepositType {
     Sol,
     SplToken,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+pub enum LockPeriod {
+    SixMonths,    // 180 days, max 5% APY
+    OneYear,      // 365 days, max 6.5% APY
+    ThreeYears,   // 1095 days, max 9% APY
+    FiveYears,    // 1825 days, max 11.5% APY
+}
+
+impl LockPeriod {
+    /// Get lock duration in seconds
+    pub fn duration_seconds(&self) -> i64 {
+        match self {
+            LockPeriod::SixMonths => 180 * 86400,   // 180 days
+            LockPeriod::OneYear => 365 * 86400,     // 365 days
+            LockPeriod::ThreeYears => 1095 * 86400, // 1095 days
+            LockPeriod::FiveYears => 1825 * 86400,  // 1825 days
+        }
+    }
+
+    /// Get maximum APY in basis points for this lock period
+    pub fn max_apy_bps(&self) -> u16 {
+        match self {
+            LockPeriod::SixMonths => 500,   // 5.0%
+            LockPeriod::OneYear => 650,     // 6.5%
+            LockPeriod::ThreeYears => 900,  // 9.0%
+            LockPeriod::FiveYears => 1150,  // 11.5%
+        }
+    }
 }
 
 // ============================================================================
@@ -711,4 +847,6 @@ pub enum VaultError {
     OrderTooSmall,
     #[msg("Missing required token account")]
     MissingTokenAccount,
+    #[msg("Deposit is still locked. Check unlock_time.")]
+    DepositStillLocked,
 }
