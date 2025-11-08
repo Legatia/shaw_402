@@ -1,0 +1,14 @@
+/home/user/shaw_402/programs/vault/target/debug/deps/base64-78f64fb418653a6d.d: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/chunked_encoder.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/display.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/read/mod.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/read/decoder.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/tables.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/write/mod.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/write/encoder.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/encode.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/decode.rs
+
+/home/user/shaw_402/programs/vault/target/debug/deps/libbase64-78f64fb418653a6d.rmeta: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/chunked_encoder.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/display.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/read/mod.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/read/decoder.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/tables.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/write/mod.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/write/encoder.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/encode.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/decode.rs
+
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/lib.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/chunked_encoder.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/display.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/read/mod.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/read/decoder.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/tables.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/write/mod.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/write/encoder.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/encode.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/base64-0.12.3/src/decode.rs:

@@ -44,6 +44,13 @@ This directory contains comprehensive documentation for the Shaw 402 Affiliate C
   - ZK circuit integration (future)
   - Privacy-preserving affiliate IDs
 
+- **[DYNAMIC_YIELD_SYSTEM.md](DYNAMIC_YIELD_SYSTEM.md)** - Performance-based vault rewards
+  - Dynamic APY formula (3-12%)
+  - Merchant tier system (Bronze/Silver/Gold/Platinum)
+  - Volume and loyalty bonuses
+  - Anti-gaming measures
+  - Integration examples
+
 ### Workflow Analysis
 
 - **[CURRENT_WORKFLOW_ANALYSIS.md](CURRENT_WORKFLOW_ANALYSIS.md)** - System workflow analysis

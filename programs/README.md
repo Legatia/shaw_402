@@ -6,9 +6,22 @@ An on-chain Solana smart contract for managing merchant deposits with staking re
 
 The Shaw Vault program is a Solana smart contract that handles:
 - **Merchant Deposits**: Merchants deposit SOL or SPL tokens as collateral
-- **Staking Rewards**: Deposits can be staked to earn rewards (7% APY)
+- **Dynamic Yield**: Performance-based APY from 3% to 12% based on volume and loyalty
 - **Reward Distribution**: 80% of staking rewards go to merchants, 20% to platform
 - **Withdrawals**: Merchants can withdraw deposits + accrued rewards
+
+### Dynamic Yield System
+
+Unlike traditional fixed-rate staking, the vault implements a **performance-based yield system**:
+
+- **Base Yield**: 3% APY for all merchants
+- **Volume Bonus**: 0-6% based on monthly transaction volume (up to $1M/month)
+- **Loyalty Bonus**: 0-3% based on time deposited (up to 365 days)
+- **Maximum APY**: 12%
+
+Merchants are categorized into tiers (Bronze/Silver/Gold/Platinum) based on their performance.
+
+📖 **[Read the full Dynamic Yield System documentation →](../docs/DYNAMIC_YIELD_SYSTEM.md)**
 
 ## Program Structure
 

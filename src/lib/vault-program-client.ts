@@ -10,7 +10,7 @@ import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
 // Vault Program ID (will be updated after deployment)
 export const VAULT_PROGRAM_ID = new PublicKey('Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS');
 
-export enum DepositToken {
+export enum DepositType {
   Sol = 0,
   SplToken = 1,
 }
@@ -29,7 +29,7 @@ export interface VaultConfig {
 export interface MerchantDeposit {
   merchant: PublicKey;
   vault: PublicKey;
-  depositToken: DepositToken;
+  depositToken: DepositType;
   totalDeposited: BN;
   accruedRewards: BN;
   isActive: boolean;
@@ -279,7 +279,7 @@ export class VaultProgramClient {
     return {
       merchant,
       vault,
-      depositToken: DepositToken.Sol,
+      depositToken: DepositType.Sol,
       totalDeposited: new BN(0),
       accruedRewards: new BN(0),
       isActive: false,

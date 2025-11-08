@@ -9,6 +9,7 @@ Shaw 402 is a data hub for affiliate commerce that enables merchants to run affi
 ### Key Features
 
 - **Merchant Onboarding**: Register business and get autonomous payment processor agent
+- **Merchant Vault**: On-chain deposit vault with dynamic yield (3-12% APY based on performance)
 - **Affiliate Programs**: Create trackable referral links with custom commission rates
 - **Solana Pay Integration**: Simple QR code payments for customers via mobile wallets
 - **Automated Splits**: Atomic USDC distribution to platform, affiliate, and merchant
