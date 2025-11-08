@@ -15,10 +15,13 @@ import { REQUEST_TIMEOUT, RETRY_ATTEMPTS, REQUEST_BODY_LIMIT, PAYMENT_AMOUNTS } 
 import { AffiliateDatabase } from '../lib/affiliate-database.js';
 import { SolanaUtils } from '../lib/solana-utils.js';
 import { NonceDatabase } from '../lib/nonce-database.js';
+import { VaultManager } from '../lib/vault-manager.js';
 import merchantRoutes, { initializeMerchantRoutes } from '../routes/merchant.js';
 import solanaPayRoutes, { initializeSolanaPayRoutes } from '../routes/solana-pay.js';
 import agentAPIRoutes, { initializeAgentAPI } from '../routes/agent-api.js';
-import { PublicKey } from '@solana/web3.js';
+import vaultAPIRoutes, { initializeVaultAPI } from '../routes/vault-api.js';
+import { PublicKey, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +40,27 @@ const nonceDb = new NonceDatabase('./data/solana-pay-nonces.db');
 const solanaUtils = new SolanaUtils({
   rpcEndpoint: context.config.solanaRpcUrl || 'https://api.devnet.solana.com',
   rpcSubscriptionsEndpoint: context.config.solanaWsUrl,
+});
+
+// Initialize Vault Manager
+const vaultPrivateKey = process.env.VAULT_PRIVATE_KEY || process.env.FACILITATOR_PRIVATE_KEY;
+if (!vaultPrivateKey) {
+  throw new Error('VAULT_PRIVATE_KEY or FACILITATOR_PRIVATE_KEY must be set');
+}
+
+const vaultKeypair = Keypair.fromSecretKey(bs58.decode(vaultPrivateKey));
+const usdcMint = new PublicKey(process.env.USDC_MINT_ADDRESS || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU');
+
+const vaultManager = new VaultManager({
+  vaultKeypair,
+  solanaUtils,
+  usdcMint,
+  minimumDeposit: {
+    SOL: BigInt(process.env.MIN_DEPOSIT_SOL || '1000000000'), // 1 SOL default
+    USDC: BigInt(process.env.MIN_DEPOSIT_USDC || '100000000'), // 100 USDC default
+  },
+  stakingEnabled: process.env.STAKING_ENABLED === 'true',
+  rewardShareRate: parseFloat(process.env.REWARD_SHARE_RATE || '0.8'), // 80% to merchants, 20% to platform
 });
 
 // Setup middleware
@@ -99,6 +123,13 @@ initializeAgentAPI({
   usdcMint: process.env.USDC_MINT_ADDRESS || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
 });
 app.use('/api/agent', agentAPIRoutes);
+
+// Initialize Vault API routes (for merchant deposits and staking)
+initializeVaultAPI({
+  vaultManager,
+  affiliateDb,
+});
+app.use('/api/vault', vaultAPIRoutes);
 
 // Config endpoint for frontend
 app.get('/api/config', (_req, res) => {

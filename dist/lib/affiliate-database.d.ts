@@ -39,6 +39,30 @@ export interface PaymentSplitData {
     timestamp?: number;
     errorMessage?: string;
 }
+export interface MerchantDepositData {
+    depositId: string;
+    merchantId: string;
+    depositAmount: string;
+    depositToken: 'SOL' | 'USDC';
+    depositTxSignature: string;
+    vaultAddress: string;
+    status: 'active' | 'withdrawn' | 'slashed';
+    depositedAt: number;
+    withdrawnAt?: number;
+    withdrawTxSignature?: string;
+    accruedRewards: string;
+}
+export interface StakingRecordData {
+    stakeId: string;
+    merchantId: string;
+    depositId: string;
+    stakedAmount: string;
+    stakingProtocol: 'native' | 'marinade' | 'jito' | 'none';
+    stakeAccount?: string;
+    rewardsEarned: string;
+    lastRewardClaim: number;
+    status: 'active' | 'unstaking' | 'unstaked';
+}
 export declare class AffiliateDatabase {
     private db;
     private dbPath;
@@ -91,6 +115,34 @@ export declare class AffiliateDatabase {
      * Get merchant stats
      */
     getMerchantStats(merchantId: string): Promise<any>;
+    /**
+     * Store merchant deposit record
+     */
+    storeMerchantDeposit(depositData: MerchantDepositData): Promise<number>;
+    /**
+     * Get merchant deposit by ID
+     */
+    getMerchantDeposit(depositId: string): Promise<MerchantDepositData | null>;
+    /**
+     * Get all deposits for a merchant
+     */
+    getMerchantDeposits(merchantId: string): Promise<MerchantDepositData[]>;
+    /**
+     * Update merchant deposit status
+     */
+    updateMerchantDepositStatus(depositId: string, status: 'active' | 'withdrawn' | 'slashed', withdrawnAt?: number, withdrawTxSignature?: string): Promise<void>;
+    /**
+     * Update merchant deposit rewards
+     */
+    updateMerchantDepositRewards(depositId: string, accruedRewards: string): Promise<void>;
+    /**
+     * Store staking record
+     */
+    storeStakingRecord(stakingData: StakingRecordData): Promise<number>;
+    /**
+     * Get staking record by deposit ID
+     */
+    getStakingRecordByDeposit(depositId: string): Promise<StakingRecordData | null>;
     /**
      * Close the database connection
      */
