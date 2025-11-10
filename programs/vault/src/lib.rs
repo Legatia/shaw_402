@@ -314,7 +314,20 @@ pub mod shaw_vault {
         order_amount_usd: u64,
         _buyer_wallet: Pubkey,
     ) -> Result<()> {
+        let authorized_agent = &ctx.accounts.authorized_agent;
         let merchant_deposit = &mut ctx.accounts.merchant_deposit;
+
+        // Verify agent is authorized and active
+        require!(authorized_agent.is_active, VaultError::UnauthorizedAgent);
+        require!(
+            authorized_agent.agent == ctx.accounts.agent.key(),
+            VaultError::UnauthorizedAgent
+        );
+        require!(
+            authorized_agent.merchant == merchant_deposit.merchant,
+            VaultError::UnauthorizedAgent
+        );
+
         let current_time = Clock::get()?.unix_timestamp;
 
         // Reset monthly volume if new month started
@@ -421,6 +434,49 @@ pub mod shaw_vault {
             platform_profit_amount / 1_000000,
             profit_share / 1_000000,
             merchant_deposit.current_yield_bps as f64 / 100.0
+        );
+
+        Ok(())
+    }
+
+    /// Register an agent to process orders for a merchant
+    /// Only the merchant can authorize their own agents
+    pub fn register_agent(ctx: Context<RegisterAgent>) -> Result<()> {
+        let authorized_agent = &mut ctx.accounts.authorized_agent;
+        let current_time = Clock::get()?.unix_timestamp;
+
+        authorized_agent.merchant = ctx.accounts.merchant.key();
+        authorized_agent.agent = ctx.accounts.agent.key();
+        authorized_agent.vault = ctx.accounts.vault.key();
+        authorized_agent.authorized_at = current_time;
+        authorized_agent.is_active = true;
+        authorized_agent.bump = ctx.bumps.authorized_agent;
+
+        msg!(
+            "Agent {} authorized for merchant {}",
+            ctx.accounts.agent.key(),
+            ctx.accounts.merchant.key()
+        );
+
+        Ok(())
+    }
+
+    /// Revoke agent authorization
+    /// Only the merchant can revoke their own agents
+    pub fn revoke_agent(ctx: Context<RevokeAgent>) -> Result<()> {
+        let authorized_agent = &mut ctx.accounts.authorized_agent;
+
+        require!(
+            authorized_agent.merchant == ctx.accounts.merchant.key(),
+            VaultError::Unauthorized
+        );
+
+        authorized_agent.is_active = false;
+
+        msg!(
+            "Agent {} revoked for merchant {}",
+            authorized_agent.agent,
+            authorized_agent.merchant
         );
 
         Ok(())
@@ -675,6 +731,13 @@ pub struct RecordOrder<'info> {
     )]
     pub merchant_deposit: Account<'info, MerchantDeposit>,
 
+    /// Authorization record for this agent-merchant pair
+    #[account(
+        seeds = [b"agent_auth", vault.key().as_ref(), merchant.key().as_ref(), agent.key().as_ref()],
+        bump = authorized_agent.bump
+    )]
+    pub authorized_agent: Account<'info, AuthorizedAgent>,
+
     /// Agent that processed the order (must be merchant's agent)
     pub agent: Signer<'info>,
 
@@ -712,6 +775,51 @@ pub struct RecordPlatformProfit<'info> {
     /// Merchant wallet (for verification)
     /// CHECK: Verified via PDA seeds
     pub merchant: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct RegisterAgent<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        init,
+        payer = merchant,
+        space = 8 + AuthorizedAgent::LEN,
+        seeds = [b"agent_auth", vault.key().as_ref(), merchant.key().as_ref(), agent.key().as_ref()],
+        bump
+    )]
+    pub authorized_agent: Account<'info, AuthorizedAgent>,
+
+    /// Agent public key to authorize
+    /// CHECK: Can be any pubkey
+    pub agent: AccountInfo<'info>,
+
+    /// Merchant authorizing the agent
+    #[account(mut)]
+    pub merchant: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RevokeAgent<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        mut,
+        seeds = [b"agent_auth", vault.key().as_ref(), merchant.key().as_ref(), agent.key().as_ref()],
+        bump = authorized_agent.bump
+    )]
+    pub authorized_agent: Account<'info, AuthorizedAgent>,
+
+    /// Agent to revoke
+    /// CHECK: Verified via PDA seeds
+    pub agent: AccountInfo<'info>,
+
+    /// Merchant revoking the agent
+    pub merchant: Signer<'info>,
 }
 
 // ============================================================================
@@ -791,6 +899,26 @@ impl MerchantDeposit {
     pub const LEN: usize = 32 + 32 + 1 + 8 + 8 + 1 + 8 + 1 + 8 + 8 + 8 + 8 + 4 + 2 + 1 + 8 + 8 + 8;
 }
 
+#[account]
+pub struct AuthorizedAgent {
+    /// Merchant who authorized this agent
+    pub merchant: Pubkey,
+    /// Agent public key (payment processor)
+    pub agent: Pubkey,
+    /// Vault this authorization belongs to
+    pub vault: Pubkey,
+    /// When this agent was authorized
+    pub authorized_at: i64,
+    /// Whether this authorization is active
+    pub is_active: bool,
+    /// Bump seed for PDA
+    pub bump: u8,
+}
+
+impl AuthorizedAgent {
+    pub const LEN: usize = 32 + 32 + 32 + 8 + 1 + 1;
+}
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
 pub enum DepositType {
     Sol,
@@ -849,4 +977,6 @@ pub enum VaultError {
     MissingTokenAccount,
     #[msg("Deposit is still locked. Check unlock_time.")]
     DepositStillLocked,
+    #[msg("Agent is not authorized for this merchant")]
+    UnauthorizedAgent,
 }
