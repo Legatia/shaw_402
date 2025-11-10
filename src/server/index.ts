@@ -140,7 +140,7 @@ app.get('/api/config', (_req, res) => {
   res.json(
     successResponse({
       platformWallet: process.env.PLATFORM_WALLET || '',
-      registrationFee: process.env.REGISTRATION_FEE || '50000000',
+      registrationFee: process.env.REGISTRATION_FEE || '1000000000',
       platformBaseUrl: process.env.PLATFORM_BASE_URL || 'http://localhost:3000',
       solanaNetwork: context.config.solanaNetwork || 'devnet',
     })

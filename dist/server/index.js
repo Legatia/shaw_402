@@ -19,6 +19,7 @@ import merchantRoutes, { initializeMerchantRoutes } from '../routes/merchant.js'
 import solanaPayRoutes, { initializeSolanaPayRoutes } from '../routes/solana-pay.js';
 import agentAPIRoutes, { initializeAgentAPI } from '../routes/agent-api.js';
 import vaultAPIRoutes, { initializeVaultAPI } from '../routes/vault-api.js';
+import vaultDashboardAPIRoutes from '../routes/vault-dashboard-api.js';
 import { PublicKey, Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
 const __filename = fileURLToPath(import.meta.url);
@@ -106,11 +107,13 @@ initializeVaultAPI({
     affiliateDb,
 });
 app.use('/api/vault', vaultAPIRoutes);
+// Vault Dashboard API (on-chain vault with lock periods and dynamic APY)
+app.use('/api/vault', vaultDashboardAPIRoutes);
 // Config endpoint for frontend
 app.get('/api/config', (_req, res) => {
     res.json(successResponse({
         platformWallet: process.env.PLATFORM_WALLET || '',
-        registrationFee: process.env.REGISTRATION_FEE || '50000000',
+        registrationFee: process.env.REGISTRATION_FEE || '1000000000',
         platformBaseUrl: process.env.PLATFORM_BASE_URL || 'http://localhost:3000',
         solanaNetwork: context.config.solanaNetwork || 'devnet',
     }));

@@ -52,37 +52,30 @@ pub mod shaw_vault {
             ],
         )?;
 
-        // Initialize or update merchant deposit record
-        if merchant_deposit.is_active {
-            merchant_deposit.total_deposited = merchant_deposit
-                .total_deposited
-                .checked_add(amount)
-                .ok_or(VaultError::MathOverflow)?;
-        } else {
-            let current_time = Clock::get()?.unix_timestamp;
-            merchant_deposit.merchant = ctx.accounts.merchant.key();
-            merchant_deposit.vault = vault.key();
-            merchant_deposit.deposit_token = DepositType::Sol;
-            merchant_deposit.total_deposited = amount;
-            merchant_deposit.accrued_rewards = 0;
-            merchant_deposit.is_active = true;
-            merchant_deposit.deposited_at = current_time;
-            merchant_deposit.bump = ctx.bumps.merchant_deposit;
+        // Initialize merchant deposit record
+        let current_time = Clock::get()?.unix_timestamp;
+        merchant_deposit.merchant = ctx.accounts.merchant.key();
+        merchant_deposit.vault = vault.key();
+        merchant_deposit.deposit_token = DepositType::Sol;
+        merchant_deposit.total_deposited = amount;
+        merchant_deposit.accrued_rewards = 0;
+        merchant_deposit.is_active = true;
+        merchant_deposit.deposited_at = current_time;
+        merchant_deposit.bump = ctx.bumps.merchant_deposit;
 
-            // Initialize performance metrics
-            merchant_deposit.total_orders_processed = 0;
-            merchant_deposit.total_volume_usd = 0;
-            merchant_deposit.current_month_volume = 0;
-            merchant_deposit.last_volume_reset = current_time;
-            merchant_deposit.monthly_unique_customers = 0;
-            merchant_deposit.current_yield_bps = 300; // Start with base 3% APY
+        // Initialize performance metrics
+        merchant_deposit.total_orders_processed = 0;
+        merchant_deposit.total_volume_usd = 0;
+        merchant_deposit.current_month_volume = 0;
+        merchant_deposit.last_volume_reset = current_time;
+        merchant_deposit.monthly_unique_customers = 0;
+        merchant_deposit.current_yield_bps = 300; // Start with base 3% APY
 
-            // Initialize lock period and profit sharing
-            merchant_deposit.lock_period = lock_period.clone();
-            merchant_deposit.unlock_time = current_time + lock_period.duration_seconds();
-            merchant_deposit.platform_profit_earned = 0;
-            merchant_deposit.profit_share_allocated = 0;
-        }
+        // Initialize lock period and profit sharing
+        merchant_deposit.lock_period = lock_period.clone();
+        merchant_deposit.unlock_time = current_time + lock_period.duration_seconds();
+        merchant_deposit.platform_profit_earned = 0;
+        merchant_deposit.profit_share_allocated = 0;
 
         msg!("Deposited {} lamports from merchant {}", amount, ctx.accounts.merchant.key());
         Ok(())
@@ -106,37 +99,30 @@ pub mod shaw_vault {
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         token::transfer(cpi_ctx, amount)?;
 
-        // Initialize or update merchant deposit record
-        if merchant_deposit.is_active {
-            merchant_deposit.total_deposited = merchant_deposit
-                .total_deposited
-                .checked_add(amount)
-                .ok_or(VaultError::MathOverflow)?;
-        } else {
-            let current_time = Clock::get()?.unix_timestamp;
-            merchant_deposit.merchant = ctx.accounts.merchant.key();
-            merchant_deposit.vault = vault.key();
-            merchant_deposit.deposit_token = DepositType::SplToken;
-            merchant_deposit.total_deposited = amount;
-            merchant_deposit.accrued_rewards = 0;
-            merchant_deposit.is_active = true;
-            merchant_deposit.deposited_at = current_time;
-            merchant_deposit.bump = ctx.bumps.merchant_deposit;
+        // Initialize merchant deposit record
+        let current_time = Clock::get()?.unix_timestamp;
+        merchant_deposit.merchant = ctx.accounts.merchant.key();
+        merchant_deposit.vault = vault.key();
+        merchant_deposit.deposit_token = DepositType::SplToken;
+        merchant_deposit.total_deposited = amount;
+        merchant_deposit.accrued_rewards = 0;
+        merchant_deposit.is_active = true;
+        merchant_deposit.deposited_at = current_time;
+        merchant_deposit.bump = ctx.bumps.merchant_deposit;
 
-            // Initialize performance metrics
-            merchant_deposit.total_orders_processed = 0;
-            merchant_deposit.total_volume_usd = 0;
-            merchant_deposit.current_month_volume = 0;
-            merchant_deposit.last_volume_reset = current_time;
-            merchant_deposit.monthly_unique_customers = 0;
-            merchant_deposit.current_yield_bps = 300; // Start with base 3% APY
+        // Initialize performance metrics
+        merchant_deposit.total_orders_processed = 0;
+        merchant_deposit.total_volume_usd = 0;
+        merchant_deposit.current_month_volume = 0;
+        merchant_deposit.last_volume_reset = current_time;
+        merchant_deposit.monthly_unique_customers = 0;
+        merchant_deposit.current_yield_bps = 300; // Start with base 3% APY
 
-            // Initialize lock period and profit sharing
-            merchant_deposit.lock_period = lock_period.clone();
-            merchant_deposit.unlock_time = current_time + lock_period.duration_seconds();
-            merchant_deposit.platform_profit_earned = 0;
-            merchant_deposit.profit_share_allocated = 0;
-        }
+        // Initialize lock period and profit sharing
+        merchant_deposit.lock_period = lock_period.clone();
+        merchant_deposit.unlock_time = current_time + lock_period.duration_seconds();
+        merchant_deposit.platform_profit_earned = 0;
+        merchant_deposit.profit_share_allocated = 0;
 
         msg!("Deposited {} tokens from merchant {}", amount, ctx.accounts.merchant.key());
         Ok(())
@@ -591,7 +577,7 @@ fn calculate_dynamic_yield(merchant_deposit: &MerchantDeposit, total_deposited_v
             let volume_ratio = (merchant_deposit.current_month_volume as u128)
                 .checked_mul(available_for_volume as u128)
                 .unwrap_or(0)
-                .checked_div(TARGET_MONTHLY_VOLUME)
+                .checked_div(TARGET_MONTHLY_VOLUME as u128)
                 .unwrap_or(0);
             volume_ratio.min(available_for_volume as u128) as u16
         }
@@ -676,7 +662,7 @@ pub struct DepositSol<'info> {
     pub vault: Account<'info, Vault>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = merchant,
         space = 8 + MerchantDeposit::LEN,
         seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()],
@@ -685,11 +671,7 @@ pub struct DepositSol<'info> {
     pub merchant_deposit: Account<'info, MerchantDeposit>,
 
     /// CHECK: Vault's SOL account (PDA)
-    #[account(
-        mut,
-        seeds = [b"vault_sol", vault.key().as_ref()],
-        bump
-    )]
+    #[account(mut)]
     pub vault_sol_account: AccountInfo<'info>,
 
     #[account(mut)]
@@ -704,7 +686,7 @@ pub struct DepositTokenAccounts<'info> {
     pub vault: Account<'info, Vault>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = merchant,
         space = 8 + MerchantDeposit::LEN,
         seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()],
@@ -738,11 +720,7 @@ pub struct Withdraw<'info> {
     pub merchant_deposit: Account<'info, MerchantDeposit>,
 
     /// CHECK: Vault's SOL account (PDA)
-    #[account(
-        mut,
-        seeds = [b"vault_sol", vault.key().as_ref()],
-        bump
-    )]
+    #[account(mut)]
     pub vault_sol_account: AccountInfo<'info>,
 
     #[account(mut)]

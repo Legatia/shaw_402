@@ -17,7 +17,7 @@ This platform enables merchants to:
 ┌─────────────────────────────────────────┐
 │         MERCHANT LANDING PAGE           │
 │   - Connect Phantom Wallet              │
-│   - Pay 0.05 SOL Registration Fee       │
+│   - Pay 1 SOL Registration Fee           │
 │   - Get Agent Wallet & Affiliate Link   │
 └──────────────────┬──────────────────────┘
                    │
@@ -76,7 +76,7 @@ This platform enables merchants to:
 
 4. **Merchant Registration Flow**
    - Merchant connects Phantom wallet
-   - Pays 0.05 SOL to platform wallet
+   - Pays 1 SOL to platform wallet
    - Backend verifies payment on-chain
    - Generates Payment Processor Agent keypair
    - Returns affiliate recruitment link
@@ -135,8 +135,8 @@ Edit `.env` and set:
 # Your platform's wallet to receive registration fees
 PLATFORM_WALLET=<your_solana_wallet_address>
 
-# Registration fee (default 0.05 SOL = 50000000 lamports)
-REGISTRATION_FEE=50000000
+# Registration fee (default 1 SOL = 1000000000 lamports)
+REGISTRATION_FEE=1000000000
 
 # Base URL for affiliate links
 PLATFORM_BASE_URL=http://localhost:3000
@@ -175,7 +175,7 @@ The landing page will be available at: `http://localhost:3000`
 4. Get devnet SOL: `solana airdrop 1 <your_wallet> --url devnet`
 5. Connect wallet on landing page
 6. Enter business name
-7. Click "Pay 0.05 SOL & Register"
+7. Click "Pay 1 SOL & Register"
 8. Approve transaction in Phantom
 9. Receive merchant ID and affiliate link!
 

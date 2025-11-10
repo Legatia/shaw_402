@@ -54,6 +54,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
     "@solana/pay": "^0.2.6",
     "@solana/spl-memo": "^0.2.5",
     "@solana/spl-token": "^0.4.14",

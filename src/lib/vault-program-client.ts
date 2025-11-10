@@ -4,7 +4,7 @@
  */
 
 import { PublicKey, Connection, Keypair, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
-import { Program, AnchorProvider, Idl, BN, web3 } from '@project-serum/anchor';
+import { BN } from '@coral-xyz/anchor';
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from '@solana/spl-token';
 
 // Vault Program ID (will be updated after deployment)
@@ -39,9 +39,8 @@ export interface MerchantDeposit {
 
 export class VaultProgramClient {
   private connection: Connection;
-  private program: Program | null = null;
 
-  constructor(connection: Connection, programId: PublicKey = VAULT_PROGRAM_ID) {
+  constructor(connection: Connection, _programId: PublicKey = VAULT_PROGRAM_ID) {
     this.connection = connection;
     // In production, load the IDL and create the Program instance
     // this.program = new Program(idl, programId, provider);
@@ -109,7 +108,7 @@ export class VaultProgramClient {
    */
   async depositSol(merchant: Keypair, vaultAuthority: PublicKey, amount: BN): Promise<string> {
     const [vaultPda] = VaultProgramClient.findVaultAddress(vaultAuthority);
-    const [depositPda, depositBump] = VaultProgramClient.findMerchantDepositAddress(vaultPda, merchant.publicKey);
+    const [depositPda] = VaultProgramClient.findMerchantDepositAddress(vaultPda, merchant.publicKey);
     const [vaultSolPda] = VaultProgramClient.findVaultSolAddress(vaultPda);
 
     console.log('Depositing SOL to vault...');
@@ -293,7 +292,6 @@ export class VaultProgramClient {
    */
   async calculateRewards(merchant: PublicKey, vaultAuthority: PublicKey): Promise<BN> {
     const [vaultPda] = VaultProgramClient.findVaultAddress(vaultAuthority);
-    const [depositPda] = VaultProgramClient.findMerchantDepositAddress(vaultPda, merchant);
 
     // In production, call the on-chain calculate_rewards instruction
     // For now, calculate off-chain as demonstration

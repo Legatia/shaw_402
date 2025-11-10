@@ -1,3 +1,85 @@
+# Environment Variables
 .env
+.env.local
+.env.production
+
+# OS Files
 .DS_Store
+Thumbs.db
+
+# Node.js
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Build Output
+dist/
+build/
+*.log
+
+# Databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+data/
+
+# PM2
+.pm2/
+logs/
+*.pid
+
+# Solana
+.anchor/
+target/
+**/.DS_Store
+test-ledger/
+
+# Keypairs (Security - Never commit these!)
+*-keypair.json
+*.json.key
+id.json
+deployer.json
+authority.json
+facilitator-keypair.json
+platform-keypair.json
+merchant-keypair.json
+vault-authority.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.history/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+
+# macOS
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor backups
+*~
+*.bak
+*.orig

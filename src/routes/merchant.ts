@@ -16,7 +16,7 @@ const router = Router();
 // Platform configuration
 const PLATFORM_WALLET = process.env.PLATFORM_WALLET || '';
 const PLATFORM_KEYPAIR_SECRET = process.env.PLATFORM_PRIVATE_KEY || ''; // Platform wallet private key
-// const REGISTRATION_FEE = process.env.REGISTRATION_FEE || '50000000'; // 0.05 SOL default
+// const REGISTRATION_FEE = process.env.REGISTRATION_FEE || '1000000000'; // 1 SOL default
 const PLATFORM_BASE_URL = process.env.PLATFORM_BASE_URL || 'http://localhost:3000';
 const USDC_MINT_ADDRESS = process.env.USDC_MINT_ADDRESS || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'; // Devnet USDC
 const AGENT_GAS_FUNDING = 10_000_000; // 0.01 SOL for gas fees

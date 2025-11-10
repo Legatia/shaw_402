@@ -1,603 +1,483 @@
-# Shaw 402 - Affiliate Commerce Platform
+# Shaw 402 - Decentralized Affiliate Commerce Platform
 
-A decentralized affiliate commerce platform on Solana with automated commission splits, featuring x402-protected payment processing and zero-knowledge privacy primitives.
+> The future of affiliate commerce. Automatic commission splits, powered by Solana.
 
-## Overview
+[![Solana](https://img.shields.io/badge/Solana-Devnet-9945FF?style=flat&logo=solana)](https://explorer.solana.com/address/CNLu8rq8jrAeB4ykwTZJiAmBw5GJMZRURZZSnuZNXJ2h?cluster=devnet)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
+[![Anchor](https://img.shields.io/badge/Anchor-0.30.1-coral)](https://www.anchor-lang.com/)
 
-Shaw 402 is a data hub for affiliate commerce that enables merchants to run affiliate programs with automatic commission distribution. The platform combines Solana Pay for customer payments, autonomous payment processor agents, and x402 protocol for secure split execution.
+## 🚀 What is Shaw 402?
 
-### Key Features
+Shaw 402 is a decentralized affiliate commerce platform that enables merchants to run affiliate programs with **automatic commission distribution**. Built on Solana with the x402 cryptographic payment protocol, it combines:
 
-- **Merchant Onboarding**: Register business and get autonomous payment processor agent
-- **Merchant Vault**: On-chain deposit vault with dynamic yield (3-12% APY based on performance)
-- **Affiliate Programs**: Create trackable referral links with custom commission rates
-- **Solana Pay Integration**: Simple QR code payments for customers via mobile wallets
-- **Automated Splits**: Atomic USDC distribution to platform, affiliate, and merchant
-- **x402 Protected**: Split execution requires cryptographic payment authorization
-- **Zero-Knowledge Privacy**: Optional ZK commitments for confidential commission rates
-- **USDC Settlement**: All payments and commissions in USDC stablecoin
+- ✅ **Instant Payouts**: Automatic USDC commission splits on-chain
+- 🤖 **Autonomous Agents**: Each merchant gets a dedicated payment processor
+- 🔒 **Secure**: x402 protocol with cryptographic authorization
+- 💰 **Vault System**: Earn dynamic yield (3-11.5% APY) on merchant deposits
+- ⚡ **Fast**: Powered by Solana's high-speed blockchain
 
-## Architecture
+## 📋 Table of Contents
 
-### System Overview
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Deployment](#deployment)
+- [Project Structure](#project-structure)
+- [API Documentation](#api-documentation)
+- [Smart Contract](#smart-contract)
+- [Configuration](#configuration)
+- [Testing](#testing)
+- [Production Checklist](#production-checklist)
+- [Contributing](#contributing)
+- [License](#license)
+
+## ✨ Features
+
+### For Merchants
+- **One-Click Registration**: 1 SOL one-time fee, get instant setup
+- **Automatic Agent Provisioning**: Dedicated payment processor with USDC wallet
+- **Affiliate Program**: Unique recruitment link with custom commission rates
+- **Real-time Tracking**: Monitor transactions and commissions
+- **Vault Deposits**: Lock SOL/USDC to earn dynamic APY based on performance
+
+### For Affiliates
+- **15% Commission**: Automatic USDC payouts on every sale
+- **Simple Signup**: Register through merchant's unique link
+- **Trackable Links**: Built-in referral tracking via transaction memos
+- **Instant Settlement**: Commissions paid immediately on-chain
+
+### For Developers
+- **x402 Protocol**: Cryptographic payment authorization
+- **TypeScript SDK**: Full type safety and documentation
+- **Solana Pay**: Mobile wallet QR code integration
+- **RESTful API**: Complete backend API for integrations
+- **Smart Contracts**: Anchor-based vault with lock periods
+
+## 🏗 Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Shaw 402 Architecture                           │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     Shaw 402 Platform                        │
+└─────────────────────────────────────────────────────────────┘
 
-                    ┌──────────────────────┐
-                    │   Customer Wallet    │
-                    │  (Solana Mobile)     │
-                    └──────────┬───────────┘
-                               │ Scans QR
-                               │ Pays in USDC
-                               ▼
-                    ┌──────────────────────┐
-                    │  Payment Agent       │◄─────────┐
-                    │  (Merchant's)        │          │
-                    │                      │          │
-                    │  • Receives payment  │          │
-                    │  • Detects memo      │          │
-                    │  • Calls Hub API     │          │
-                    └──────────┬───────────┘          │
-                               │                      │
-                               ▼                      │
-┌─────────────────────────────────────────────────────┴────────┐
-│                      Hub API (Shaw 402)                      │
-│                                                               │
-│  • Merchant registration & agent provisioning                │
-│  • Affiliate registration & tracking                         │
-│  • Split calculation (platform/affiliate/merchant)           │
-│  • Payment split confirmation & recording                    │
-└───────────────────────────────┬───────────────────────────────┘
-                                │ Split instructions
-                                ▼
-                    ┌──────────────────────┐
-                    │  Payment Agent       │
-                    │                      │
-                    │  Creates x402 auth   │
-                    │  Signs with key      │
-                    └──────────┬───────────┘
-                               │ X-Payment header
-                               ▼
-                    ┌──────────────────────┐
-                    │  Facilitator         │
-                    │  (x402 Protected)    │
-                    │                      │
-                    │  • Verifies x402     │
-                    │  • Executes split    │
-                    │  • Atomic USDC tx    │
-                    └──────────┬───────────┘
-                               │
-                               ▼
-                    ┌──────────────────────┐
-                    │  Solana Blockchain   │
-                    │                      │
-                    │  Platform ← USDC     │
-                    │  Affiliate ← USDC    │
-                    │  Merchant ← USDC     │
-                    └──────────────────────┘
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  Facilitator │    │  Hub Server  │    │ Payment Agent│
+│  Port 3001   │◄──►│  Port 3000   │◄──►│  (Per Merch) │
+│              │    │              │    │              │
+│ • x402 Auth  │    │ • API Routes │    │ • Monitor TX │
+│ • Settlement │    │ • Static Web │    │ • Auto Split │
+│ • Nonce DB   │    │ • Database   │    │ • Confirm    │
+└──────────────┘    └──────────────┘    └──────────────┘
+       │                    │                    │
+       └────────────────────┼────────────────────┘
+                            │
+                    ┌───────▼────────┐
+                    │ Solana Devnet  │
+                    │                │
+                    │ • USDC Token   │
+                    │ • Vault Smart  │
+                    │   Contract     │
+                    └────────────────┘
 ```
 
 ### Payment Flow
 
-1. **Merchant Registration**
-   - Merchant registers business via Hub API
-   - Hub provisions autonomous payment processor agent
-   - Merchant receives affiliate program link
-
-2. **Affiliate Registration**
-   - Affiliate signs up through merchant's program
-   - Hub generates unique tracking link with referral code
-   - Affiliate shares link to promote merchant
-
-3. **Customer Purchase**
-   - Customer clicks affiliate link → redirected to merchant
-   - Merchant website generates Solana Pay QR code
-   - QR contains: agent wallet + USDC amount + affiliate ID in memo
-   - Customer scans and pays via Solana mobile wallet
-
-4. **Payment Detection**
-   - Agent monitors blockchain for incoming USDC
-   - Detects payment with affiliate ID in memo field
-   - Calls Hub API: `POST /api/agent/get-split-instructions`
-
-5. **Split Calculation**
-   - Hub looks up merchant configuration and affiliate data
-   - Calculates splits based on fee rates:
-     - Platform fee (e.g., 5%)
-     - Affiliate commission (e.g., 15%)
-     - Merchant amount (remaining ~80%)
-   - Returns split instructions with recipient addresses
-
-6. **x402-Protected Execution**
-   - Agent creates x402 payment authorization
-   - Signs authorization with agent private key
-   - Calls Facilitator: `POST /execute-split` (x402-protected)
-   - Facilitator verifies x402 payment in header
-   - Executes atomic 3-way USDC split transaction
-
-7. **Confirmation**
-   - Agent confirms to Hub: `POST /api/agent/confirm-split`
-   - Hub records transaction in database
-   - Updates affiliate earnings and statistics
-
-## Project Structure
-
 ```
-shaw_402/
-├── src/
-│   ├── agent/
-│   │   ├── index.ts                    # Payment processor agent entry
-│   │   └── payment-processor.ts        # Agent payment monitoring
-│   ├── facilitator/
-│   │   └── index.ts                    # x402 facilitator app
-│   ├── server/
-│   │   └── index.ts                    # Hub API server
-│   ├── lib/
-│   │   ├── affiliate-database.ts       # Merchant/affiliate data management
-│   │   ├── nonce-database.ts           # x402 nonce replay protection
-│   │   ├── solana-utils.ts             # Blockchain utilities
-│   │   ├── x402-middleware.ts          # x402 Express middleware
-│   │   ├── zk-privacy.ts               # Zero-knowledge primitives
-│   │   └── ...
-│   └── routes/
-│       ├── agent-api.ts                # Hub endpoints for agents
-│       ├── execute-split.ts            # x402-protected split endpoint
-│       ├── solana-pay.ts               # Solana Pay QR generation
-│       ├── settle-usdc-split.ts        # Legacy split settlement
-│       └── ...
-├── docs/
-│   ├── AFFILIATE_PLATFORM.md           # Affiliate platform design
-│   ├── AGENT_SYSTEM.md                 # Payment processor agents
-│   ├── SOLANA_PAY_INTEGRATION.md       # Solana Pay implementation
-│   ├── UNIFIED_ARCHITECTURE_PROPOSAL.md # Architecture overview
-│   ├── USDC_SETTLEMENT.md              # USDC payment splitting
-│   ├── ZK_PRIVACY_ARCHITECTURE.md      # Zero-knowledge privacy
-│   └── SETUP.md                        # Detailed setup guide
-├── test-*.mjs                          # Test scripts
-├── package.json
-└── README.md                           # This file
+Customer → Scan QR Code → Pay USDC → Agent Detects
+                                          ↓
+                              ┌───────────────────┐
+                              │ Agent Wallet      │
+                              │ (Receives Payment)│
+                              └─────────┬─────────┘
+                                        │
+                        Creates x402 Authorization
+                                        │
+                              ┌─────────▼─────────┐
+                              │   Facilitator     │
+                              │ Verifies & Splits │
+                              └─────────┬─────────┘
+                                        │
+                    Atomic 3-Way USDC Distribution
+                                        │
+        ┌───────────────────────────────┼───────────────────────┐
+        │                               │                       │
+   ┌────▼─────┐              ┌──────────▼────────┐    ┌────────▼─────┐
+   │ Platform │              │    Affiliate      │    │   Merchant   │
+   │   (5%)   │              │      (15%)        │    │     (80%)    │
+   └──────────┘              └───────────────────┘    └──────────────┘
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Install Dependencies
+### Prerequisites
+
+- **Node.js** 18+ and npm
+- **Solana CLI** 1.18+
+- **Anchor** 0.30.1+
+- **Rust** 1.75+ (for smart contracts)
+- **Phantom Wallet** (for testing frontend)
+
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/your-org/shaw_402.git
+cd shaw_402
+
+# Install dependencies
 npm install
+
+# Copy environment template
+cp env.example .env
+
+# Generate keypairs
+solana-keygen new --outfile facilitator-keypair.json
+solana-keygen new --outfile platform-keypair.json
+solana-keygen new --outfile vault-authority.json
+
+# Get base58 keys and update .env
+node -e "const bs58=require('bs58'),fs=require('fs'); const key=JSON.parse(fs.readFileSync('facilitator-keypair.json')); console.log(bs58.encode(Buffer.from(key)));"
 ```
 
-### 2. Configure Environment
+### Configuration
+
+Edit `.env` with your keypairs and settings:
 
 ```bash
-cp env.example .env
-# Edit .env with your configuration
-```
+# Facilitator
+FACILITATOR_PRIVATE_KEY=<base58_key_from_above>
+FACILITATOR_PUBLIC_KEY=<solana-keygen pubkey facilitator-keypair.json>
 
-Required environment variables:
-
-```env
-# Facilitator (x402 service)
-FACILITATOR_PORT=3001
-FACILITATOR_PRIVATE_KEY=<base58_private_key>
-
-# Hub Server
-SERVER_PORT=3000
-PLATFORM_WALLET=<platform_usdc_wallet>
-USDC_MINT_ADDRESS=<usdc_mint_address>
+# Platform
+PLATFORM_WALLET=<platform_pubkey>
+PLATFORM_PRIVATE_KEY=<platform_base58_key>
 
 # Solana
 SOLANA_RPC_URL=https://api.devnet.solana.com
 SOLANA_NETWORK=devnet
 
-# Database
-AFFILIATE_DB_PATH=./data/affiliates.db
-NONCE_DB_PATH=./data/nonce.db
+# Vault
+VAULT_PROGRAM_ID=CNLu8rq8jrAeB4ykwTZJiAmBw5GJMZRURZZSnuZNXJ2h
+VAULT_AUTHORITY=<vault_authority_pubkey>
 ```
 
-### 3. Build TypeScript
+### Build & Run
 
 ```bash
+# Build TypeScript
 npm run build
-```
 
-### 4. Initialize Database
+# Build Smart Contract
+cd programs/vault && cargo build-sbf
+cd ../..
 
-```bash
-# Create data directory
-mkdir -p data
-
-# Database will be created automatically on first run
-```
-
-### 5. Start Services
-
-```bash
 # Start all services with PM2
 npm start
 
-# Or run individual services in development:
-npm run dev:server      # Hub API
-npm run dev:facilitator # x402 Facilitator
-npm run dev:agent       # Payment Processor Agent
-
-# View logs
-npm run logs
-
-# Stop all services
-npm stop
+# Or start individually
+npm run start:facilitator  # Terminal 1
+npm run start:server       # Terminal 2
+npm run start:agent        # Terminal 3
 ```
 
-### 6. Test the Platform
+### Access the Platform
+
+- **Frontend**: http://localhost:3000
+- **API**: http://localhost:3000/health
+- **Facilitator**: http://localhost:3001/health
+
+## 🌐 Deployment
+
+### Deploy Smart Contract
 
 ```bash
-# Test Solana Pay integration
-npm run test:solana-pay
+# Build the contract
+cd programs/vault && cargo build-sbf
 
-# Test USDC payment split
-npm run test:usdc
+# Deploy to devnet
+solana program deploy target/deploy/shaw_vault.so
 
-# Test x402 protocol
-npm test
+# Update .env with new program ID
+VAULT_PROGRAM_ID=<your_program_id>
 ```
 
-## API Reference
-
-### Hub API Endpoints
-
-**For Agents** (requires Bearer token authentication)
-
-```http
-POST /api/agent/get-split-instructions
-Authorization: Bearer <agent_token>
-Content-Type: application/json
-
-{
-  "agentWallet": "agent_pubkey",
-  "amount": "1000000",  // USDC micro-units (6 decimals)
-  "referralCode": "AFF123",
-  "paymentTxSignature": "tx_signature"
-}
-
-Response:
-{
-  "success": true,
-  "data": {
-    "splitId": "split_1699...",
-    "merchantId": "merchant_abc",
-    "totalAmount": "1000000",
-    "recipients": [
-      {
-        "role": "platform",
-        "wallet": "platform_pubkey",
-        "amount": "50000",
-        "usdcAccount": "platform_usdc_account"
-      },
-      {
-        "role": "affiliate",
-        "wallet": "affiliate_pubkey",
-        "amount": "150000",
-        "usdcAccount": "affiliate_usdc_account"
-      },
-      {
-        "role": "merchant",
-        "wallet": "merchant_pubkey",
-        "amount": "800000",
-        "usdcAccount": "merchant_usdc_account"
-      }
-    ],
-    "facilitatorUrl": "http://localhost:3001",
-    "calculation": {
-      "platformFee": "50000",
-      "affiliateCommission": "150000",
-      "merchantAmount": "800000"
-    }
-  }
-}
-```
-
-```http
-POST /api/agent/confirm-split
-Authorization: Bearer <agent_token>
-Content-Type: application/json
-
-{
-  "splitId": "split_1699...",
-  "settlementTx": "tx_signature",
-  "status": "completed",
-  "agentWallet": "agent_pubkey",
-  "referralCode": "AFF123"
-}
-
-Response:
-{
-  "success": true,
-  "data": {
-    "splitId": "split_1699...",
-    "status": "recorded",
-    "message": "Split completion confirmed and recorded"
-  }
-}
-```
-
-### Facilitator Endpoints
-
-**x402-Protected Split Execution**
-
-```http
-POST /execute-split
-X-Payment: <x402_payment_authorization>
-Content-Type: application/json
-
-{
-  "splitId": "split_1699...",
-  "recipients": [
-    {
-      "role": "platform",
-      "wallet": "platform_pubkey",
-      "amount": "50000",
-      "usdcAccount": "platform_usdc_account"
-    },
-    // ... more recipients
-  ],
-  "agentUSDCAccount": "agent_usdc_account",
-  "usdcMint": "usdc_mint_address",
-  "agentPrivateKey": "base58_private_key"
-}
-
-Response:
-{
-  "success": true,
-  "data": {
-    "splitId": "split_1699...",
-    "transactionSignature": "5xK7...",
-    "explorerUrl": "https://explorer.solana.com/tx/5xK7...?cluster=devnet",
-    "recipients": [...],
-    "x402Payment": {
-      "verified": true,
-      "agentWallet": "agent_pubkey",
-      "transactionSignature": "4mN9..."
-    }
-  }
-}
-```
-
-**Other Facilitator Endpoints**
-
-```http
-GET /health              # Health check
-POST /verify             # Verify x402 payment
-POST /settle             # Settle x402 payment
-GET /nonce/:nonce        # Get nonce status
-GET /stats               # Get statistics
-POST /cleanup            # Cleanup expired nonces
-```
-
-### Solana Pay Endpoints
-
-```http
-POST /solana-pay/:endpoint
-Content-Type: application/json
-
-{
-  "account": "customer_pubkey"
-}
-
-Response:
-{
-  "transaction": "base64_serialized_transaction",
-  "message": "Payment for Order #123"
-}
-```
-
-```http
-GET /solana-pay/qr/:endpoint
-Response: QR code image (PNG)
-```
-
-```http
-GET /solana-pay/status/:reference
-Response: {
-  "status": "confirmed",
-  "signature": "tx_signature",
-  "amount": "1000000"
-}
-```
-
-## How x402 is Used
-
-Unlike typical x402 implementations where customers pay for access, Shaw 402 uses x402 to protect the **split execution service**:
-
-### Why This Architecture?
-
-1. **Customer Experience**: Customers pay simply via Solana Pay QR codes (no x402 complexity)
-2. **Service Protection**: x402 protects the facilitator's split execution service
-3. **Agent Authorization**: Only authorized agents can request splits
-4. **Replay Protection**: x402 nonce system prevents duplicate split requests
-5. **Fair Pricing**: Agents pay small fee to use split execution service
-
-### x402 Flow for Split Execution
-
-```typescript
-// 1. Agent creates x402 payment authorization
-const paymentRequest = {
-  payload: {
-    amount: "1000",           // Small fee for split service
-    recipient: facilitatorAddress,
-    resourceId: "/execute-split",
-    resourceUrl: "/execute-split",
-    nonce: generateNonce(),
-    timestamp: Date.now(),
-    expiry: Date.now() + 60000
-  },
-  signature: signPayload(payload, agentPrivateKey),
-  clientPublicKey: agentPublicKey
-};
-
-// 2. Agent calls facilitator with x402 header
-const response = await fetch('http://facilitator:3001/execute-split', {
-  method: 'POST',
-  headers: {
-    'X-Payment': JSON.stringify(paymentRequest),
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    splitId,
-    recipients,
-    agentUSDCAccount,
-    usdcMint,
-    agentPrivateKey
-  })
-});
-
-// 3. Facilitator verifies x402 and executes split
-// - Verifies signature and nonce
-// - Validates agent keypair matches x402 auth
-// - Executes atomic USDC split transaction
-```
-
-## Zero-Knowledge Privacy
-
-Shaw 402 includes foundational ZK primitives for privacy-preserving affiliate commerce:
-
-- **Poseidon Hash Commitments**: Hide affiliate IDs and commission amounts
-- **NaCl Box Encryption**: Secure agent-server communication
-- **ZK Circuit Integration**: Ready for SNARKs/STARKs (future)
-
-See [docs/ZK_PRIVACY_ARCHITECTURE.md](docs/ZK_PRIVACY_ARCHITECTURE.md) for details.
-
-## Development
-
-### Run in Development Mode
+### Production Deployment
 
 ```bash
-# Terminal 1: Hub API
-npm run dev:server
+# Build for production
+npm run build
 
-# Terminal 2: Facilitator
-npm run dev:facilitator
-
-# Terminal 3: Payment Processor Agent
-npm run dev:agent
-```
-
-### Code Quality
-
-```bash
-npm run lint          # Run ESLint
-npm run fmt           # Format with Prettier
-npm run fmt:check     # Check formatting
-```
-
-### Technology Stack
-
-- **Runtime**: Node.js with TypeScript
-- **Framework**: Express.js
-- **Blockchain**: Solana (Gill SDK + @solana/web3.js)
-- **Payments**: Solana Pay, @solana/spl-token (USDC)
-- **Database**: SQLite3
-- **Privacy**: circomlibjs (Poseidon), tweetnacl (encryption)
-- **Process Management**: PM2
-- **Validation**: Zod
-
-## Documentation
-
-Detailed documentation available in [`docs/`](docs/):
-
-- [**UNIFIED_ARCHITECTURE_PROPOSAL.md**](docs/UNIFIED_ARCHITECTURE_PROPOSAL.md) - Complete system architecture
-- [**AFFILIATE_PLATFORM.md**](docs/AFFILIATE_PLATFORM.md) - Affiliate platform design
-- [**AGENT_SYSTEM.md**](docs/AGENT_SYSTEM.md) - Payment processor agents
-- [**SOLANA_PAY_INTEGRATION.md**](docs/SOLANA_PAY_INTEGRATION.md) - Solana Pay implementation
-- [**USDC_SETTLEMENT.md**](docs/USDC_SETTLEMENT.md) - USDC split mechanics
-- [**ZK_PRIVACY_ARCHITECTURE.md**](docs/ZK_PRIVACY_ARCHITECTURE.md) - Zero-knowledge privacy
-- [**SETUP.md**](docs/SETUP.md) - Detailed setup instructions
-
-## Security Considerations
-
-- **Private Keys**: Never commit `.env` or private keys to git
-- **x402 Authorization**: Validates agent identity before split execution
-- **Nonce Replay Protection**: Prevents duplicate split requests
-- **Atomic Transactions**: Splits execute atomically or fail completely
-- **HTTPS**: Use HTTPS in production for all HTTP communication
-- **Rate Limiting**: Implement rate limiting on all public endpoints
-- **Input Validation**: All inputs validated with Zod schemas
-- **Database Encryption**: Encrypt sensitive data in production
-
-## Production Deployment
-
-### Recommended Setup
-
-1. **Separate Services**: Deploy Hub, Facilitator, and Agents separately
-2. **Database**: Use PostgreSQL instead of SQLite for production
-3. **Secrets Management**: Use environment-specific secret managers
-4. **Monitoring**: Set up PM2 monitoring and alerts
-5. **Load Balancing**: Use nginx or similar for reverse proxy
-6. **HTTPS**: Configure SSL certificates
-7. **Mainnet**: Switch to Solana mainnet-beta RPC endpoints
-8. **USDC Mint**: Use mainnet USDC mint address
-
-### Environment Variables for Production
-
-```env
-NODE_ENV=production
-SOLANA_NETWORK=mainnet-beta
+# Set environment to mainnet
+SOLANA_NETWORK=mainnet
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
-USDC_MINT_ADDRESS=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
-SIMULATE_TRANSACTIONS=false
 
-# Use secure secrets management
-FACILITATOR_PRIVATE_KEY=<from_secrets_manager>
+# Use mainnet USDC
+USDC_MINT_ADDRESS=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+
+# Deploy with PM2
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup
 ```
 
-## Troubleshooting
+## 📁 Project Structure
 
-### Common Issues
+```
+shaw_402/
+├── src/
+│   ├── facilitator/          # x402 payment settlement service
+│   │   └── index.ts
+│   ├── server/               # Main API server
+│   │   └── index.ts
+│   ├── agent/                # Payment processor agents
+│   │   ├── index.ts
+│   │   └── payment-processor.ts
+│   ├── lib/                  # Core libraries
+│   │   ├── affiliate-database.ts
+│   │   ├── solana-utils.ts
+│   │   ├── x402-middleware.ts
+│   │   ├── vault-manager.ts
+│   │   └── zk-privacy.ts
+│   └── routes/               # API endpoints
+│       ├── merchant.ts
+│       ├── affiliate.ts
+│       ├── agent-api.ts
+│       └── vault-api.ts
+├── programs/vault/           # Solana smart contract
+│   └── src/lib.rs
+├── public/                   # Frontend
+│   ├── index.html
+│   └── dashboard.html
+├── docs/                     # Documentation
+├── simulations/              # Economic simulations
+└── tests/                    # Test files
+```
 
-**Agent not detecting payments**
-- Check agent is monitoring correct wallet address
-- Verify Solana RPC endpoint is accessible
-- Check agent logs for blockchain polling errors
+## 📚 API Documentation
 
-**Split execution fails**
-- Ensure agent has sufficient USDC balance
-- Verify all recipient addresses are valid
-- Check x402 authorization is correctly signed
+### Merchant Registration
 
-**x402 payment verification fails**
-- Verify nonce is unique and not expired
-- Check signature matches agent public key
-- Ensure facilitator is running and accessible
+```bash
+POST /merchant/register
+Content-Type: application/json
 
-**Database errors**
-- Check database file permissions
-- Verify SQLite3 is installed
-- Ensure data directory exists
+{
+  "businessName": "My Store",
+  "merchantWallet": "4m1oKRy...",
+  "txSignature": "5wojeLe..."
+}
+```
 
-## License
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "merchantId": "merchant_abc123",
+    "agentWallet": "7xYzPqR...",
+    "agentUSDCAccount": "9AbCdEf...",
+    "affiliateSignupLink": "http://localhost:3000/affiliate/signup?merchant=merchant_abc123"
+  }
+}
+```
 
-MIT
+### Affiliate Signup
 
-## Contributing
+```bash
+POST /merchant/affiliate/register
+Content-Type: application/json
 
-Contributions welcome! Please maintain:
+{
+  "merchantId": "merchant_abc123",
+  "affiliateName": "John Doe",
+  "affiliateWallet": "8TyUiOp..."
+}
+```
 
-- TypeScript strict mode
-- ES modules (import/export)
-- Zod validation for all inputs
-- Structured error handling
-- Comprehensive tests
-- Documentation for new features
+### Health Check
 
-## Credits
+```bash
+GET /health
+```
 
-Built with:
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "timestamp": "2025-11-10T22:00:00.000Z",
+    "facilitator": {
+      "healthy": true,
+      "facilitator": "6DUeeyF..."
+    }
+  }
+}
+```
 
-- [Solana](https://solana.com/) - High-performance blockchain
-- [Solana Pay](https://solanapay.com/) - Mobile wallet payments
-- [Gill SDK](https://www.gillsdk.com/) - Solana TypeScript SDK
-- [@solana/web3.js](https://github.com/solana-labs/solana-web3.js) - Solana JavaScript API
-- [Express.js](https://expressjs.com/) - Web framework
-- [PM2](https://pm2.keymetrics.io/) - Process manager
-- [circomlibjs](https://github.com/iden3/circomlibjs) - Zero-knowledge primitives
+## 📜 Smart Contract
+
+### Vault Program
+
+**Program ID**: `CNLu8rq8jrAeB4ykwTZJiAmBw5GJMZRURZZSnuZNXJ2h` (Devnet)
+
+**Instructions:**
+- `initialize` - Create vault with authority
+- `deposit_sol` - Deposit SOL with lock period
+- `deposit_token` - Deposit USDC with lock period
+- `withdraw` - Withdraw after unlock time
+- `register_agent` - Authorize payment agent
+- `record_order` - Track merchant sales
+- `record_platform_profit` - Record platform earnings
+- `calculate_rewards` - Compute dynamic APY
+
+**Lock Periods:**
+- 6 months → max 5% APY
+- 1 year → max 6.5% APY
+- 3 years → max 9% APY
+- 5 years → max 11.5% APY
+
+**Dynamic Yield Formula:**
+```
+APY = Base (3%) + Volume Bonus (0-3.5%) + Profit Share (0-5%)
+```
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `FACILITATOR_PORT` | Facilitator service port | 3001 |
+| `SERVER_PORT` | Hub server port | 3000 |
+| `SOLANA_NETWORK` | Network (devnet/mainnet) | devnet |
+| `PLATFORM_WALLET` | Platform fee destination | Required |
+| `REGISTRATION_FEE` | Merchant registration (lamports) | 1000000000 (1 SOL) |
+| `VAULT_PROGRAM_ID` | Deployed vault contract | Required |
+
+### Commission Rates
+
+Default rates (configurable per merchant):
+- **Platform**: 5%
+- **Affiliate**: 15%
+- **Merchant**: 80%
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+npm test
+
+# Individual tests
+npm run test:402        # x402 protocol
+npm run test:replay     # Replay attack protection
+npm run test:payment    # USDC settlements
+npm run test:solana-pay # QR code payments
+
+# Smart contract tests
+anchor test
+```
+
+### Manual Testing Flow
+
+1. **Start services**: `npm start`
+2. **Open frontend**: http://localhost:3000
+3. **Connect Phantom** wallet
+4. **Register merchant** (costs 1 SOL devnet)
+5. **Get affiliate link**
+6. **Test payment** via Solana Pay QR code
+
+## ✅ Production Checklist
+
+Before deploying to mainnet:
+
+- [ ] Generate production keypairs securely
+- [ ] Fund facilitator wallet with SOL
+- [ ] Deploy vault contract to mainnet
+- [ ] Update all .env variables
+- [ ] Change USDC mint to mainnet address
+- [ ] Set `SIMULATE_TRANSACTIONS=false`
+- [ ] Configure PostgreSQL (migrate from SQLite)
+- [ ] Set up monitoring and alerts
+- [ ] Enable SSL/HTTPS
+- [ ] Configure reverse proxy (nginx)
+- [ ] Security audit smart contracts
+- [ ] Test vault deposit/withdraw flow
+- [ ] Verify commission splits work correctly
+- [ ] Load test with expected traffic
+
+## 🔐 Security
+
+### Critical Security Measures
+
+1. **Never commit keypairs** to git
+2. **Use environment variables** for all secrets
+3. **Validate all inputs** on backend
+4. **Verify transactions** on-chain before crediting
+5. **Rate limit** API endpoints
+6. **Enable CORS** restrictions in production
+7. **Audit smart contracts** before mainnet deployment
+
+### Known Security Considerations
+
+- **Vault Contract**: Needs authorization check on `record_platform_profit`
+- **Replay Attacks**: Mitigated via nonce database
+- **Transaction Verification**: All payments verified on-chain
+
+## 📈 Monitoring
+
+### PM2 Commands
+
+```bash
+pm2 logs              # View all logs
+pm2 monit            # Real-time monitoring
+pm2 restart all      # Restart services
+pm2 status           # Check status
+```
+
+### Health Endpoints
+
+Monitor these URLs:
+- Facilitator: http://localhost:3001/health
+- Hub Server: http://localhost:3000/health
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) file for details
+
+## 🔗 Links
+
+- **Live Demo**: http://localhost:3000 (when running)
+- **Smart Contract**: [Solana Explorer](https://explorer.solana.com/address/CNLu8rq8jrAeB4ykwTZJiAmBw5GJMZRURZZSnuZNXJ2h?cluster=devnet)
+- **Documentation**: [docs/](docs/)
+- **Testing Report**: [TESTING_REPORT.md](TESTING_REPORT.md)
+
+## 💬 Support
+
+For questions and support:
+- Open an issue on GitHub
+- Check the [documentation](docs/)
+- Review the [TESTING_REPORT.md](TESTING_REPORT.md)
+
+## 🙏 Acknowledgments
+
+- Built with [Anchor Framework](https://www.anchor-lang.com/)
+- Powered by [Solana](https://solana.com/)
+- Uses [Solana Pay](https://solanapay.com/) protocol
+- Integrates [Phantom Wallet](https://phantom.app/)
+
+---
+
+**Built with ❤️ on Solana**
+
+*Shaw 402 - The future of affiliate commerce is decentralized.*

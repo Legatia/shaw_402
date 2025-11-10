@@ -5,7 +5,6 @@
 
 import { Router, type Request, type Response } from 'express';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { Program, AnchorProvider, Wallet, setProvider } from '@coral-xyz/anchor';
 import { successResponse, errorResponse } from '../lib/api-response-helpers.js';
 
 const router = Router();
@@ -311,9 +310,8 @@ router.post('/deposit', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Validate inputs
-    let merchantPubkey: PublicKey;
     try {
-      merchantPubkey = new PublicKey(merchant);
+      new PublicKey(merchant);
     } catch (error) {
       res.status(400).json(errorResponse('Invalid merchant public key', 'INVALID_PUBKEY', 400));
       return;
