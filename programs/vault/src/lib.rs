@@ -405,7 +405,14 @@ pub mod shaw_vault {
         ctx: Context<RecordPlatformProfit>,
         platform_profit_amount: u64,
     ) -> Result<()> {
+        let vault = &ctx.accounts.vault;
         let merchant_deposit = &mut ctx.accounts.merchant_deposit;
+
+        // SECURITY: Verify caller is authorized (platform authority or authorized agent)
+        require!(
+            ctx.accounts.platform.key() == vault.authority,
+            VaultError::Unauthorized
+        );
 
         // Track total platform profit earned from this merchant
         merchant_deposit.platform_profit_earned = merchant_deposit
@@ -413,14 +420,64 @@ pub mod shaw_vault {
             .checked_add(platform_profit_amount)
             .ok_or(VaultError::MathOverflow)?;
 
-        // Allocate 50% of platform profit to merchant as yield boost
-        let profit_share = platform_profit_amount
+        // Calculate 50% profit share
+        let total_profit_share = platform_profit_amount
             .checked_div(2)
             .ok_or(VaultError::MathOverflow)?;
 
+        // Calculate current APY cap for this merchant's lock period
+        let lock_max_apy = merchant_deposit.lock_period.max_apy_bps();
+        let total_deposited_value = merchant_deposit.total_deposited;
+
+        // Calculate maximum allowed profit share allocation (to not exceed APY cap)
+        // max_profit_share_bps = lock_max_apy - BASE_YIELD_BPS - volume_bonus
+        const BASE_YIELD_BPS: u16 = 300;
+
+        // Current profit share in BPS
+        let current_profit_share_bps = if total_deposited_value > 0 {
+            ((merchant_deposit.profit_share_allocated as u128)
+                .checked_mul(10000)
+                .unwrap_or(0)
+                .checked_div(total_deposited_value as u128)
+                .unwrap_or(0)) as u16
+        } else {
+            0
+        };
+
+        // Available space for more profit share
+        let max_profit_share_bps = lock_max_apy.saturating_sub(BASE_YIELD_BPS);
+        let remaining_space_bps = max_profit_share_bps.saturating_sub(current_profit_share_bps);
+
+        // Convert remaining space to absolute amount
+        let max_additional_profit_share = if total_deposited_value > 0 {
+            (total_deposited_value as u128)
+                .checked_mul(remaining_space_bps as u128)
+                .unwrap_or(0)
+                .checked_div(10000)
+                .unwrap_or(0) as u64
+        } else {
+            0
+        };
+
+        // Split profit share: allocate up to cap, excess goes to immediate rewards
+        let (profit_share_allocated, excess_rewards) = if total_profit_share <= max_additional_profit_share {
+            // All profit share fits within APY cap
+            (total_profit_share, 0)
+        } else {
+            // Cap profit share, rest becomes immediate rewards
+            (max_additional_profit_share, total_profit_share - max_additional_profit_share)
+        };
+
+        // Update profit share allocation
         merchant_deposit.profit_share_allocated = merchant_deposit
             .profit_share_allocated
-            .checked_add(profit_share)
+            .checked_add(profit_share_allocated)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Add excess to accrued rewards (doesn't affect APY, immediate payout)
+        merchant_deposit.accrued_rewards = merchant_deposit
+            .accrued_rewards
+            .checked_add(excess_rewards)
             .ok_or(VaultError::MathOverflow)?;
 
         // Recalculate yield with new profit share
@@ -430,9 +487,10 @@ pub mod shaw_vault {
         );
 
         msg!(
-            "Platform profit recorded: ${} | Merchant profit share: ${} | New yield: {}%",
+            "Platform profit recorded: ${} | Profit share: ${} | Excess rewards: ${} | New yield: {}%",
             platform_profit_amount / 1_000000,
-            profit_share / 1_000000,
+            profit_share_allocated / 1_000000,
+            excess_rewards / 1_000000,
             merchant_deposit.current_yield_bps as f64 / 100.0
         );
 
