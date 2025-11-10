@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merchant Dashboard - Shaw 402 Vault</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+        }
+
+        .wallet-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .wallet-address {
+            font-family: monospace;
+            font-size: 14px;
+            color: #666;
+            background: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #764ba2;
+        }
+
+        .btn-secondary:hover {
+            background: #633a85;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .card-title {
+            font-size: 14px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .card-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .card-subtitle {
+            font-size: 14px;
+            color: #999;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-locked {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-unlocked {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-none {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .chart-card {
+            grid-column: 1 / -1;
+        }
+
+        .metrics-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+
+        .metric-label {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .metric-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 48px;
+            color: #666;
+        }
+
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+        }
+
+        .apy-breakdown {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .breakdown-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 14px;
+        }
+
+        .breakdown-label {
+            color: #666;
+        }
+
+        .breakdown-value {
+            color: #333;
+            font-weight: 500;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 32px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            margin-bottom: 24px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .lock-period-options {
+            display: grid;
+            gap: 12px;
+        }
+
+        .lock-option {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .lock-option:hover {
+            border-color: #667eea;
+        }
+
+        .lock-option.selected {
+            border-color: #667eea;
+            background: #f0f3ff;
+        }
+
+        .lock-option-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .lock-option-duration {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .lock-option-apy {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 18px;
+        }
+
+        .lock-option-desc {
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Merchant Vault Dashboard</h1>
+                <div id="businessName" style="color: #999; font-size: 14px; margin-top: 4px;"></div>
+            </div>
+            <div class="wallet-info">
+                <div id="walletAddress" class="wallet-address">Not Connected</div>
+                <button id="connectBtn" class="btn">Connect Wallet</button>
+            </div>
+        </div>
+
+        <div id="errorContainer"></div>
+
+        <div id="noDepositState" style="display: none;">
+            <div class="card">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🏦</div>
+                    <h2 style="margin-bottom: 12px;">No Vault Deposit Found</h2>
+                    <p style="margin-bottom: 24px;">Start earning dynamic APY by depositing into the vault</p>
+                    <button id="openDepositModal" class="btn">Deposit into Vault</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="dashboardContent" style="display: none;">
+            <div class="grid">
+                <!-- Current APY Card -->
+                <div class="card">
+                    <div class="card-title">Current APY</div>
+                    <div class="card-value" id="currentAPY">--%</div>
+                    <div class="card-subtitle" id="lockPeriodInfo">Loading...</div>
+
+                    <div class="apy-breakdown">
+                        <div class="breakdown-item">
+                            <span class="breakdown-label">Base Yield</span>
+                            <span class="breakdown-value" id="baseYield">3.00%</span>
+                        </div>
+                        <div class="breakdown-item">
+                            <span class="breakdown-label">Profit Share Bonus</span>
+                            <span class="breakdown-value" id="profitShareBonus">0.00%</span>
+                        </div>
+                        <div class="breakdown-item">
+                            <span class="breakdown-label">Volume Bonus</span>
+                            <span class="breakdown-value" id="volumeBonus">0.00%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vault Balance Card -->
+                <div class="card">
+                    <div class="card-title">Vault Balance</div>
+                    <div class="card-value" id="vaultBalance">--</div>
+                    <div class="card-subtitle">
+                        <span id="lockStatus" class="status-badge">Loading...</span>
+                    </div>
+                    <div style="margin-top: 12px; font-size: 14px; color: #666;">
+                        <div>Unlock Date: <strong id="unlockDate">--</strong></div>
+                        <div style="margin-top: 8px;" id="unlockProgress"></div>
+                    </div>
+                </div>
+
+                <!-- Total Rewards Card -->
+                <div class="card">
+                    <div class="card-title">Total Rewards Earned</div>
+                    <div class="card-value" id="totalRewards">$0.00</div>
+                    <div class="card-subtitle" id="rewardsSubtitle">Available for withdrawal after unlock</div>
+                    <div class="actions">
+                        <button id="withdrawBtn" class="btn" disabled>Withdraw</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid">
+                <!-- Performance Metrics Card -->
+                <div class="card">
+                    <div class="card-title">Performance Metrics</div>
+                    <div class="metrics-list">
+                        <div class="metric-row">
+                            <span class="metric-label">Total Orders Processed</span>
+                            <span class="metric-value" id="totalOrders">0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Current Month Volume</span>
+                            <span class="metric-value" id="monthVolume">$0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Total Volume (All Time)</span>
+                            <span class="metric-value" id="totalVolume">$0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Platform Profit Generated</span>
+                            <span class="metric-value" id="platformProfit">$0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Profit Share Card -->
+                <div class="card">
+                    <div class="card-title">Your Profit Share (50%)</div>
+                    <div class="card-value" id="profitShareAllocated">$0.00</div>
+                    <div class="card-subtitle">Profit share from your order volume</div>
+
+                    <div class="metrics-list" style="margin-top: 16px;">
+                        <div class="metric-row">
+                            <span class="metric-label">Accrued Rewards</span>
+                            <span class="metric-value" id="accruedRewards">$0.00</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Last Updated</span>
+                            <span class="metric-value" id="lastUpdate">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="loadingState" class="card">
+            <div class="loading">
+                <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+                <div>Loading vault data...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Deposit Modal -->
+    <div id="depositModal" class="modal">
+        <div class="modal-content">
+            <h2 class="modal-title">Deposit into Vault</h2>
+
+            <div class="form-group">
+                <label class="form-label">Deposit Amount (SOL)</label>
+                <input type="number" id="depositAmount" class="form-input" placeholder="10" min="1" step="0.1">
+                <div style="font-size: 12px; color: #999; margin-top: 4px;">Minimum: 1 SOL</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Lock Period</label>
+                <div class="lock-period-options" id="lockPeriodOptions">
+                    <div class="lock-option" data-period="0">
+                        <div class="lock-option-header">
+                            <span class="lock-option-duration">6 Months</span>
+                            <span class="lock-option-apy">Max 5.0%</span>
+                        </div>
+                        <div class="lock-option-desc">180 days commitment</div>
+                    </div>
+                    <div class="lock-option selected" data-period="1">
+                        <div class="lock-option-header">
+                            <span class="lock-option-duration">1 Year</span>
+                            <span class="lock-option-apy">Max 6.5%</span>
+                        </div>
+                        <div class="lock-option-desc">365 days commitment (Recommended)</div>
+                    </div>
+                    <div class="lock-option" data-period="2">
+                        <div class="lock-option-header">
+                            <span class="lock-option-duration">3 Years</span>
+                            <span class="lock-option-apy">Max 9.0%</span>
+                        </div>
+                        <div class="lock-option-desc">1095 days commitment</div>
+                    </div>
+                    <div class="lock-option" data-period="3">
+                        <div class="lock-option-header">
+                            <span class="lock-option-duration">5 Years</span>
+                            <span class="lock-option-apy">Max 11.5%</span>
+                        </div>
+                        <div class="lock-option-desc">1825 days commitment</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="confirmDepositBtn" class="btn">Confirm Deposit</button>
+                <button id="closeModalBtn" class="btn-secondary btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <script>
+        const { Connection, PublicKey, clusterApiUrl, SystemProgram, Transaction, LAMPORTS_PER_SOL } = solanaWeb3;
+
+        // Configuration
+        const VAULT_API_URL = window.location.origin + '/api/vault';
+        const SOLANA_NETWORK = 'devnet';
+
+        let connection = new Connection(clusterApiUrl(SOLANA_NETWORK), 'confirmed');
+        let walletPublicKey = null;
+        let selectedLockPeriod = 1; // Default to 1 year
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            checkWalletConnection();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('connectBtn').addEventListener('click', connectWallet);
+            document.getElementById('openDepositModal').addEventListener('click', openDepositModal);
+            document.getElementById('closeModalBtn').addEventListener('click', closeDepositModal);
+            document.getElementById('confirmDepositBtn').addEventListener('click', handleDeposit);
+            document.getElementById('withdrawBtn').addEventListener('click', handleWithdraw);
+
+            // Lock period selection
+            document.querySelectorAll('.lock-option').forEach(option => {
+                option.addEventListener('click', (e) => {
+                    document.querySelectorAll('.lock-option').forEach(opt => opt.classList.remove('selected'));
+                    e.currentTarget.classList.add('selected');
+                    selectedLockPeriod = parseInt(e.currentTarget.dataset.period);
+                });
+            });
+        }
+
+        async function checkWalletConnection() {
+            try {
+                const provider = window.solana;
+                if (provider && provider.isPhantom) {
+                    const resp = await provider.connect({ onlyIfTrusted: true });
+                    walletPublicKey = resp.publicKey;
+                    updateWalletUI();
+                    await loadDashboardData();
+                }
+            } catch (error) {
+                console.log('Not connected on load');
+            }
+        }
+
+        async function connectWallet() {
+            try {
+                const provider = window.solana;
+                if (!provider || !provider.isPhantom) {
+                    showError('Please install Phantom wallet');
+                    return;
+                }
+
+                const resp = await provider.connect();
+                walletPublicKey = resp.publicKey;
+                updateWalletUI();
+                await loadDashboardData();
+            } catch (error) {
+                showError('Failed to connect wallet: ' + error.message);
+            }
+        }
+
+        function updateWalletUI() {
+            if (walletPublicKey) {
+                const address = walletPublicKey.toString();
+                document.getElementById('walletAddress').textContent =
+                    address.slice(0, 4) + '...' + address.slice(-4);
+                document.getElementById('connectBtn').textContent = 'Connected';
+                document.getElementById('connectBtn').disabled = true;
+            }
+        }
+
+        async function loadDashboardData() {
+            if (!walletPublicKey) return;
+
+            try {
+                document.getElementById('loadingState').style.display = 'block';
+                document.getElementById('noDepositState').style.display = 'none';
+                document.getElementById('dashboardContent').style.display = 'none';
+
+                // Fetch real vault data from backend
+                const response = await fetch(`${VAULT_API_URL}/merchant/${walletPublicKey.toString()}`);
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        // No deposit found
+                        document.getElementById('loadingState').style.display = 'none';
+                        document.getElementById('noDepositState').style.display = 'block';
+                        return;
+                    }
+                    throw new Error('Failed to fetch vault data');
+                }
+
+                const data = await response.json();
+
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('dashboardContent').style.display = 'block';
+
+                updateDashboard(data);
+            } catch (error) {
+                document.getElementById('loadingState').style.display = 'none';
+                showError('Failed to load dashboard: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        function updateDashboard(data) {
+            // APY breakdown
+            const apyBreakdown = data.apyBreakdown || { total: 3.00, base: 3.00, profitShare: 0, volume: 0 };
+            document.getElementById('currentAPY').textContent = apyBreakdown.total.toFixed(2) + '%';
+            document.getElementById('baseYield').textContent = apyBreakdown.base.toFixed(2) + '%';
+            document.getElementById('profitShareBonus').textContent = apyBreakdown.profitShare.toFixed(2) + '%';
+            document.getElementById('volumeBonus').textContent = apyBreakdown.volume.toFixed(2) + '%';
+
+            // Lock period info
+            const lockPeriodNames = ['6 Months', '1 Year', '3 Years', '5 Years'];
+            const lockPeriodMaxAPY = [5.0, 6.5, 9.0, 11.5];
+            const lockPeriodName = lockPeriodNames[data.lockPeriod] || 'Unknown';
+            const maxAPY = lockPeriodMaxAPY[data.lockPeriod] || 0;
+            document.getElementById('lockPeriodInfo').textContent =
+                `${lockPeriodName} lock (Max ${maxAPY}% APY)`;
+
+            // Vault balance
+            const balanceSOL = (data.depositedAmount / LAMPORTS_PER_SOL).toFixed(4);
+            const balanceUSD = data.depositedValueUSD ? `$${(data.depositedValueUSD / 1_000000).toFixed(2)}` : '';
+            document.getElementById('vaultBalance').textContent = `${balanceSOL} SOL`;
+            if (balanceUSD) {
+                document.getElementById('vaultBalance').innerHTML += `<div style="font-size: 14px; color: #999; margin-top: 4px;">${balanceUSD}</div>`;
+            }
+
+            // Lock status
+            const now = Date.now() / 1000;
+            const isLocked = now < data.unlockTime;
+            const lockStatus = document.getElementById('lockStatus');
+
+            if (isLocked) {
+                lockStatus.textContent = 'Locked';
+                lockStatus.className = 'status-badge status-locked';
+                document.getElementById('withdrawBtn').disabled = true;
+
+                // Show unlock progress
+                const totalDuration = data.unlockTime - data.depositTimestamp;
+                const elapsed = now - data.depositTimestamp;
+                const progress = Math.min((elapsed / totalDuration) * 100, 100);
+
+                const daysRemaining = Math.ceil((data.unlockTime - now) / 86400);
+                document.getElementById('unlockProgress').innerHTML = `
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progress}%"></div>
+                    </div>
+                    <div style="font-size: 12px; color: #999; margin-top: 4px;">${daysRemaining} days remaining</div>
+                `;
+            } else {
+                lockStatus.textContent = 'Unlocked';
+                lockStatus.className = 'status-badge status-unlocked';
+                document.getElementById('withdrawBtn').disabled = false;
+                document.getElementById('unlockProgress').innerHTML = '<div style="font-size: 12px; color: #28a745;">✓ Ready for withdrawal</div>';
+            }
+
+            // Unlock date
+            const unlockDate = new Date(data.unlockTime * 1000);
+            document.getElementById('unlockDate').textContent = unlockDate.toLocaleDateString();
+
+            // Total rewards
+            const totalRewards = (data.accruedRewards / 1_000000).toFixed(2);
+            document.getElementById('totalRewards').textContent = `$${totalRewards}`;
+
+            if (isLocked) {
+                document.getElementById('rewardsSubtitle').textContent =
+                    `Available for withdrawal after ${unlockDate.toLocaleDateString()}`;
+            } else {
+                document.getElementById('rewardsSubtitle').textContent =
+                    'Available now!';
+            }
+
+            // Performance metrics
+            document.getElementById('totalOrders').textContent = data.totalOrdersProcessed || 0;
+            document.getElementById('monthVolume').textContent =
+                `$${((data.currentMonthVolume || 0) / 1_000000).toFixed(2)}`;
+            document.getElementById('totalVolume').textContent =
+                `$${((data.totalVolumeProcessed || 0) / 1_000000).toFixed(2)}`;
+            document.getElementById('platformProfit').textContent =
+                `$${((data.platformProfitEarned || 0) / 1_000000).toFixed(2)}`;
+
+            // Profit share
+            document.getElementById('profitShareAllocated').textContent =
+                `$${((data.profitShareAllocated || 0) / 1_000000).toFixed(2)}`;
+            document.getElementById('accruedRewards').textContent =
+                `$${((data.accruedRewards || 0) / 1_000000).toFixed(2)}`;
+
+            // Last update
+            const lastUpdate = new Date(data.lastVolumeReset * 1000);
+            document.getElementById('lastUpdate').textContent = lastUpdate.toLocaleDateString();
+
+            // Business name (if available)
+            if (data.businessName) {
+                document.getElementById('businessName').textContent = data.businessName;
+            }
+        }
+
+        function openDepositModal() {
+            document.getElementById('depositModal').classList.add('active');
+        }
+
+        function closeDepositModal() {
+            document.getElementById('depositModal').classList.remove('active');
+        }
+
+        async function handleDeposit() {
+            try {
+                const amount = parseFloat(document.getElementById('depositAmount').value);
+
+                if (!amount || amount < 1) {
+                    showError('Minimum deposit is 1 SOL');
+                    return;
+                }
+
+                if (!walletPublicKey) {
+                    showError('Please connect your wallet');
+                    return;
+                }
+
+                document.getElementById('confirmDepositBtn').disabled = true;
+                document.getElementById('confirmDepositBtn').textContent = 'Processing...';
+
+                // Call backend API to create deposit transaction
+                const response = await fetch(`${VAULT_API_URL}/deposit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        merchant: walletPublicKey.toString(),
+                        amount: amount * LAMPORTS_PER_SOL,
+                        lockPeriod: selectedLockPeriod
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to create deposit transaction');
+                }
+
+                const { transaction } = await response.json();
+
+                // Sign and send transaction
+                const provider = window.solana;
+                const tx = Transaction.from(Buffer.from(transaction, 'base64'));
+                const signed = await provider.signTransaction(tx);
+                const signature = await connection.sendRawTransaction(signed.serialize());
+                await connection.confirmTransaction(signature);
+
+                closeDepositModal();
+                showSuccess('Deposit successful!');
+
+                // Reload dashboard
+                setTimeout(() => loadDashboardData(), 2000);
+
+            } catch (error) {
+                showError('Deposit failed: ' + error.message);
+            } finally {
+                document.getElementById('confirmDepositBtn').disabled = false;
+                document.getElementById('confirmDepositBtn').textContent = 'Confirm Deposit';
+            }
+        }
+
+        async function handleWithdraw() {
+            try {
+                if (!walletPublicKey) {
+                    showError('Please connect your wallet');
+                    return;
+                }
+
+                if (!confirm('Withdraw all funds and rewards from vault?')) {
+                    return;
+                }
+
+                document.getElementById('withdrawBtn').disabled = true;
+                document.getElementById('withdrawBtn').textContent = 'Processing...';
+
+                // Call backend API to create withdraw transaction
+                const response = await fetch(`${VAULT_API_URL}/withdraw`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        merchant: walletPublicKey.toString()
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to create withdraw transaction');
+                }
+
+                const { transaction } = await response.json();
+
+                // Sign and send transaction
+                const provider = window.solana;
+                const tx = Transaction.from(Buffer.from(transaction, 'base64'));
+                const signed = await provider.signTransaction(tx);
+                const signature = await connection.sendRawTransaction(signed.serialize());
+                await connection.confirmTransaction(signature);
+
+                showSuccess('Withdrawal successful!');
+
+                // Reload dashboard
+                setTimeout(() => loadDashboardData(), 2000);
+
+            } catch (error) {
+                showError('Withdrawal failed: ' + error.message);
+            } finally {
+                document.getElementById('withdrawBtn').disabled = false;
+                document.getElementById('withdrawBtn').textContent = 'Withdraw';
+            }
+        }
+
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = `<div class="error">${message}</div>`;
+            setTimeout(() => {
+                errorContainer.innerHTML = '';
+            }, 5000);
+        }
+
+        function showSuccess(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = `<div class="error" style="background: #d4edda; border-color: #c3e6cb; color: #155724;">${message}</div>`;
+            setTimeout(() => {
+                errorContainer.innerHTML = '';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
