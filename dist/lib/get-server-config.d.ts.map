@@ -1,0 +1,1 @@
+{"version":3,"file":"get-server-config.d.ts","sourceRoot":"","sources":["../../src/lib/get-server-config.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAEH,OAAO,eAAe,CAAC;AACvB,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAC;AAExB,QAAA,MAAM,kBAAkB;;;;;;;;;;;;;iBAQtB,CAAC;AAEH,MAAM,MAAM,YAAY,GAAG,CAAC,CAAC,KAAK,CAAC,OAAO,kBAAkB,CAAC,CAAC;AAI9D,wBAAgB,eAAe,IAAI,YAAY,CA2B9C"}

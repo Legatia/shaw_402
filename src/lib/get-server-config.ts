@@ -12,6 +12,7 @@ const ServerConfigSchema = z.object({
   merchantSolanaAddress: z.string().optional(),
   facilitatorPublicKey: z.string().optional(),
   solanaRpcUrl: z.string().url().optional(),
+  solanaWsUrl: z.string().url().optional(),
   solanaNetwork: z.enum(['mainnet-beta', 'devnet', 'testnet', 'localnet']).optional(),
 });
 
@@ -31,6 +32,7 @@ export function getServerConfig(): ServerConfig {
       merchantSolanaAddress: process.env.MERCHANT_SOLANA_ADDRESS,
       facilitatorPublicKey: process.env.FACILITATOR_PUBLIC_KEY,
       solanaRpcUrl: process.env.SOLANA_RPC_URL,
+      solanaWsUrl: process.env.SOLANA_WS_URL,
       solanaNetwork: process.env.SOLANA_NETWORK ?? 'devnet',
     });
 

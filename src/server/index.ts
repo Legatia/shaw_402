@@ -6,20 +6,77 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getServerContext } from '../lib/get-server-context.js';
 import { createX402MiddlewareWithUtils } from '../lib/x402-middleware.js';
 import { successResponse, errorResponse } from '../lib/api-response-helpers.js';
 import { REQUEST_TIMEOUT, RETRY_ATTEMPTS, REQUEST_BODY_LIMIT, PAYMENT_AMOUNTS } from '../lib/constants.js';
+import { AffiliateDatabase } from '../lib/affiliate-database.js';
+import { SolanaUtils } from '../lib/solana-utils.js';
+import { NonceDatabase } from '../lib/nonce-database.js';
+import { VaultManager } from '../lib/vault-manager.js';
+import merchantRoutes, { initializeMerchantRoutes } from '../routes/merchant.js';
+import solanaPayRoutes, { initializeSolanaPayRoutes } from '../routes/solana-pay.js';
+import agentAPIRoutes, { initializeAgentAPI } from '../routes/agent-api.js';
+import vaultAPIRoutes, { initializeVaultAPI } from '../routes/vault-api.js';
+import vaultDashboardAPIRoutes from '../routes/vault-dashboard-api.js';
+import { PublicKey, Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Initialize context
 const context = getServerContext();
 const app: Express = express();
 
+// Initialize affiliate database
+const affiliateDb = new AffiliateDatabase('./data/affiliate.db');
+
+// Initialize nonce database for Solana Pay
+const nonceDb = new NonceDatabase('./data/solana-pay-nonces.db');
+
+// Initialize Solana utils for merchant routes
+const solanaUtils = new SolanaUtils({
+  rpcEndpoint: context.config.solanaRpcUrl || 'https://api.devnet.solana.com',
+  rpcSubscriptionsEndpoint: context.config.solanaWsUrl,
+});
+
+// Initialize Vault Manager
+const vaultPrivateKey = process.env.VAULT_PRIVATE_KEY || process.env.FACILITATOR_PRIVATE_KEY;
+if (!vaultPrivateKey) {
+  throw new Error('VAULT_PRIVATE_KEY or FACILITATOR_PRIVATE_KEY must be set');
+}
+
+const vaultKeypair = Keypair.fromSecretKey(bs58.decode(vaultPrivateKey));
+const usdcMint = new PublicKey(process.env.USDC_MINT_ADDRESS || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU');
+
+const vaultManager = new VaultManager({
+  vaultKeypair,
+  solanaUtils,
+  usdcMint,
+  minimumDeposit: {
+    SOL: BigInt(process.env.MIN_DEPOSIT_SOL || '1000000000'), // 1 SOL default
+    USDC: BigInt(process.env.MIN_DEPOSIT_USDC || '100000000'), // 100 USDC default
+  },
+  stakingEnabled: process.env.STAKING_ENABLED === 'true',
+  rewardShareRate: parseFloat(process.env.REWARD_SHARE_RATE || '0.8'), // 80% to merchants, 20% to platform
+});
+
 // Setup middleware
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Allow inline scripts for frontend
+  })
+);
 app.use(cors());
 app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files from public directory
+const publicPath = path.join(__dirname, '../../public');
+app.use(express.static(publicPath));
 
 // Request logging
 app.use((req, _res, next) => {
@@ -40,6 +97,55 @@ const x402Utils = createX402MiddlewareWithUtils(
 // ============================================================================
 // ROUTES
 // ============================================================================
+
+// Initialize merchant routes
+initializeMerchantRoutes(affiliateDb, solanaUtils);
+app.use('/merchant', merchantRoutes);
+
+// Initialize Solana Pay routes
+const merchantAddress = context.config.merchantSolanaAddress
+  ? new PublicKey(context.config.merchantSolanaAddress)
+  : new PublicKey(context.config.facilitatorPublicKey || '');
+
+initializeSolanaPayRoutes({
+  solanaUtils,
+  nonceDb,
+  merchantAddress,
+  serverBaseUrl: process.env.SERVER_BASE_URL || `http://localhost:${context.config.port}`,
+  label: process.env.SOLANA_PAY_LABEL || 'x402 Payment Server',
+  iconUrl: process.env.SOLANA_PAY_ICON_URL,
+});
+app.use('/api/solana-pay', solanaPayRoutes);
+
+// Initialize Agent API routes (for payment processor agents)
+initializeAgentAPI({
+  affiliateDb,
+  platformWallet: process.env.PLATFORM_WALLET || '',
+  usdcMint: process.env.USDC_MINT_ADDRESS || '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+});
+app.use('/api/agent', agentAPIRoutes);
+
+// Initialize Vault API routes (for merchant deposits and staking)
+initializeVaultAPI({
+  vaultManager,
+  affiliateDb,
+});
+app.use('/api/vault', vaultAPIRoutes);
+
+// Vault Dashboard API (on-chain vault with lock periods and dynamic APY)
+app.use('/api/vault', vaultDashboardAPIRoutes);
+
+// Config endpoint for frontend
+app.get('/api/config', (_req, res) => {
+  res.json(
+    successResponse({
+      platformWallet: process.env.PLATFORM_WALLET || '',
+      registrationFee: process.env.REGISTRATION_FEE || '50000000',
+      platformBaseUrl: process.env.PLATFORM_BASE_URL || 'http://localhost:3000',
+      solanaNetwork: context.config.solanaNetwork || 'devnet',
+    })
+  );
+});
 
 // Health check endpoint
 app.get('/health', async (_req, res) => {
@@ -232,11 +338,23 @@ app.use((_req, res) => {
 
 async function start() {
   try {
+    // Initialize affiliate database
+    await affiliateDb.initialize();
+    context.log.info('Affiliate database initialized');
+
+    // Initialize nonce database
+    await nonceDb.initialize();
+    context.log.info('Solana Pay nonce database initialized');
+
     app.listen(context.config.port, () => {
       context.log.info(`Server App running on port ${context.config.port}`);
       context.log.info(`Facilitator URL: ${context.config.facilitatorUrl}`);
       context.log.info('');
       context.log.info('Available endpoints:');
+      context.log.info('  GET  / - Merchant registration landing page');
+      context.log.info('  POST /merchant/register - Register new merchant');
+      context.log.info('  GET  /merchant/:id - Get merchant details');
+      context.log.info('  POST /merchant/affiliate/register - Register affiliate');
       context.log.info('  GET  /health - Health check');
       context.log.info('  GET  /public - Public endpoint (no payment)');
       context.log.info('  GET  /api/premium-data - Premium data (payment required)');
@@ -244,6 +362,13 @@ async function start() {
       context.log.info('  GET  /api/download/:fileId - Download file (payment required)');
       context.log.info('  GET  /api/tier/:tier - Tier-based access (payment required)');
       context.log.info('  GET  /stats - Payment statistics');
+      context.log.info('');
+      context.log.info('Solana Pay endpoints:');
+      context.log.info('  GET/POST /api/solana-pay/:endpoint - Transaction request');
+      context.log.info('  GET  /api/solana-pay/:endpoint/qr - QR code');
+      context.log.info('  GET  /api/solana-pay/:endpoint/status/:ref - Payment status');
+      context.log.info('  POST /api/solana-pay/:endpoint/validate - Validate payment');
+      context.log.info('  GET  /api/solana-pay/transfer/:endpoint - Transfer URL');
     });
   } catch (error) {
     context.log.error('Failed to start Server App:', error);
@@ -254,6 +379,8 @@ async function start() {
 // Graceful shutdown
 async function shutdown() {
   context.log.info('Shutting down Server App...');
+  await affiliateDb.close();
+  await nonceDb.close();
   process.exit(0);
 }
 

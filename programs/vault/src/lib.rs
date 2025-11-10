@@ -1,0 +1,1040 @@
+//! Shaw 402 Vault Program
+//!
+//! A Solana smart contract for managing merchant deposits with staking rewards.
+//! Merchants deposit SOL or SPL tokens as collateral, which can be staked to earn rewards.
+
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"); // Placeholder, will be updated after build
+
+#[program]
+pub mod shaw_vault {
+    use super::*;
+
+    /// Initialize the vault
+    /// Creates the global vault state account
+    pub fn initialize(ctx: Context<Initialize>, bump: u8) -> Result<()> {
+        let vault = &mut ctx.accounts.vault;
+        vault.authority = ctx.accounts.authority.key();
+        vault.bump = bump;
+        vault.total_deposits = 0;
+        vault.total_merchants = 0;
+        vault.min_deposit_sol = 1_000_000_000; // 1 SOL
+        vault.min_deposit_token = 100_000_000; // 100 USDC (6 decimals)
+        vault.reward_share_rate = 8000; // 80.00% (basis points)
+        vault.staking_enabled = true;
+
+        msg!("Vault initialized with authority: {}", vault.authority);
+        Ok(())
+    }
+
+    /// Deposit SOL into the vault
+    /// Merchants deposit SOL as collateral which can be staked
+    pub fn deposit_sol(ctx: Context<DepositSol>, amount: u64, lock_period: LockPeriod) -> Result<()> {
+        let vault = &ctx.accounts.vault;
+        let merchant_deposit = &mut ctx.accounts.merchant_deposit;
+
+        // Validate minimum deposit
+        require!(amount >= vault.min_deposit_sol, VaultError::InsufficientDeposit);
+
+        // Transfer SOL from merchant to vault
+        let ix = anchor_lang::solana_program::system_instruction::transfer(
+            &ctx.accounts.merchant.key(),
+            &ctx.accounts.vault_sol_account.key(),
+            amount,
+        );
+        anchor_lang::solana_program::program::invoke(
+            &ix,
+            &[
+                ctx.accounts.merchant.to_account_info(),
+                ctx.accounts.vault_sol_account.to_account_info(),
+            ],
+        )?;
+
+        // Initialize or update merchant deposit record
+        if merchant_deposit.is_active {
+            merchant_deposit.total_deposited = merchant_deposit
+                .total_deposited
+                .checked_add(amount)
+                .ok_or(VaultError::MathOverflow)?;
+        } else {
+            let current_time = Clock::get()?.unix_timestamp;
+            merchant_deposit.merchant = ctx.accounts.merchant.key();
+            merchant_deposit.vault = vault.key();
+            merchant_deposit.deposit_token = DepositType::Sol;
+            merchant_deposit.total_deposited = amount;
+            merchant_deposit.accrued_rewards = 0;
+            merchant_deposit.is_active = true;
+            merchant_deposit.deposited_at = current_time;
+            merchant_deposit.bump = ctx.bumps.merchant_deposit;
+
+            // Initialize performance metrics
+            merchant_deposit.total_orders_processed = 0;
+            merchant_deposit.total_volume_usd = 0;
+            merchant_deposit.current_month_volume = 0;
+            merchant_deposit.last_volume_reset = current_time;
+            merchant_deposit.monthly_unique_customers = 0;
+            merchant_deposit.current_yield_bps = 300; // Start with base 3% APY
+
+            // Initialize lock period and profit sharing
+            merchant_deposit.lock_period = lock_period.clone();
+            merchant_deposit.unlock_time = current_time + lock_period.duration_seconds();
+            merchant_deposit.platform_profit_earned = 0;
+            merchant_deposit.profit_share_allocated = 0;
+        }
+
+        msg!("Deposited {} lamports from merchant {}", amount, ctx.accounts.merchant.key());
+        Ok(())
+    }
+
+    /// Deposit SPL tokens (USDC) into the vault
+    pub fn deposit_token(ctx: Context<DepositTokenAccounts>, amount: u64, lock_period: LockPeriod) -> Result<()> {
+        let vault = &ctx.accounts.vault;
+        let merchant_deposit = &mut ctx.accounts.merchant_deposit;
+
+        // Validate minimum deposit
+        require!(amount >= vault.min_deposit_token, VaultError::InsufficientDeposit);
+
+        // Transfer tokens from merchant to vault
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.merchant_token_account.to_account_info(),
+            to: ctx.accounts.vault_token_account.to_account_info(),
+            authority: ctx.accounts.merchant.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::transfer(cpi_ctx, amount)?;
+
+        // Initialize or update merchant deposit record
+        if merchant_deposit.is_active {
+            merchant_deposit.total_deposited = merchant_deposit
+                .total_deposited
+                .checked_add(amount)
+                .ok_or(VaultError::MathOverflow)?;
+        } else {
+            let current_time = Clock::get()?.unix_timestamp;
+            merchant_deposit.merchant = ctx.accounts.merchant.key();
+            merchant_deposit.vault = vault.key();
+            merchant_deposit.deposit_token = DepositType::SplToken;
+            merchant_deposit.total_deposited = amount;
+            merchant_deposit.accrued_rewards = 0;
+            merchant_deposit.is_active = true;
+            merchant_deposit.deposited_at = current_time;
+            merchant_deposit.bump = ctx.bumps.merchant_deposit;
+
+            // Initialize performance metrics
+            merchant_deposit.total_orders_processed = 0;
+            merchant_deposit.total_volume_usd = 0;
+            merchant_deposit.current_month_volume = 0;
+            merchant_deposit.last_volume_reset = current_time;
+            merchant_deposit.monthly_unique_customers = 0;
+            merchant_deposit.current_yield_bps = 300; // Start with base 3% APY
+
+            // Initialize lock period and profit sharing
+            merchant_deposit.lock_period = lock_period.clone();
+            merchant_deposit.unlock_time = current_time + lock_period.duration_seconds();
+            merchant_deposit.platform_profit_earned = 0;
+            merchant_deposit.profit_share_allocated = 0;
+        }
+
+        msg!("Deposited {} tokens from merchant {}", amount, ctx.accounts.merchant.key());
+        Ok(())
+    }
+
+    /// Withdraw deposit and accrued rewards
+    /// Merchants can withdraw their full deposit plus rewards
+    pub fn withdraw(ctx: Context<Withdraw>) -> Result<()> {
+        let merchant_deposit = &mut ctx.accounts.merchant_deposit;
+
+        require!(merchant_deposit.is_active, VaultError::DepositNotActive);
+        require!(merchant_deposit.merchant == ctx.accounts.merchant.key(), VaultError::Unauthorized);
+
+        // Calculate current rewards using dynamic yield
+        let current_time = Clock::get()?.unix_timestamp;
+
+        // Enforce lock period
+        require!(
+            current_time >= merchant_deposit.unlock_time,
+            VaultError::DepositStillLocked
+        );
+        let time_elapsed = current_time - merchant_deposit.deposited_at;
+        let days_elapsed = time_elapsed / 86400;
+
+        // Use merchant's current dynamic yield (updated by record_order)
+        let yield_bps = merchant_deposit.current_yield_bps;
+
+        // Calculate rewards based on dynamic APY
+        let annual_reward = merchant_deposit.total_deposited
+            .checked_mul(yield_bps as u64)
+            .ok_or(VaultError::MathOverflow)?
+            .checked_div(10000)
+            .ok_or(VaultError::MathOverflow)?;
+
+        let daily_reward = annual_reward
+            .checked_div(365)
+            .ok_or(VaultError::MathOverflow)?;
+
+        let total_rewards = daily_reward
+            .checked_mul(days_elapsed as u64)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Apply merchant share (80%)
+        let merchant_rewards = total_rewards
+            .checked_mul(ctx.accounts.vault.reward_share_rate as u64)
+            .ok_or(VaultError::MathOverflow)?
+            .checked_div(10000)
+            .ok_or(VaultError::MathOverflow)?;
+
+        let total_withdrawal = merchant_deposit.total_deposited
+            .checked_add(merchant_rewards)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Transfer back to merchant based on deposit type
+        match merchant_deposit.deposit_token {
+            DepositType::Sol => {
+                // Transfer SOL back
+                **ctx.accounts.vault_sol_account.to_account_info().try_borrow_mut_lamports()? -= total_withdrawal;
+                **ctx.accounts.merchant.to_account_info().try_borrow_mut_lamports()? += total_withdrawal;
+            }
+            DepositType::SplToken => {
+                // Transfer tokens back
+                let seeds = &[
+                    b"vault",
+                    ctx.accounts.vault.authority.as_ref(),
+                    &[ctx.accounts.vault.bump],
+                ];
+                let signer = &[&seeds[..]];
+
+                let vault_token_account = ctx.accounts.vault_token_account.as_ref()
+                    .ok_or(VaultError::MissingTokenAccount)?;
+                let merchant_token_account = ctx.accounts.merchant_token_account.as_ref()
+                    .ok_or(VaultError::MissingTokenAccount)?;
+                let token_program = ctx.accounts.token_program.as_ref()
+                    .ok_or(VaultError::MissingTokenAccount)?;
+
+                let cpi_accounts = Transfer {
+                    from: vault_token_account.to_account_info(),
+                    to: merchant_token_account.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                };
+                let cpi_program = token_program.to_account_info();
+                let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
+                token::transfer(cpi_ctx, total_withdrawal)?;
+            }
+        }
+
+        // Mark deposit as withdrawn
+        merchant_deposit.is_active = false;
+        merchant_deposit.accrued_rewards = merchant_rewards;
+
+        msg!("Withdrawn {} (deposit: {}, rewards: {}) to merchant {}",
+            total_withdrawal,
+            merchant_deposit.total_deposited,
+            merchant_rewards,
+            ctx.accounts.merchant.key()
+        );
+
+        Ok(())
+    }
+
+    /// Update vault parameters (admin only)
+    pub fn update_vault_config(
+        ctx: Context<UpdateVaultConfig>,
+        min_deposit_sol: Option<u64>,
+        min_deposit_token: Option<u64>,
+        reward_share_rate: Option<u16>,
+        staking_enabled: Option<bool>,
+    ) -> Result<()> {
+        require!(ctx.accounts.authority.key() == ctx.accounts.vault.authority, VaultError::Unauthorized);
+
+        let vault = &mut ctx.accounts.vault;
+
+        if let Some(min_sol) = min_deposit_sol {
+            vault.min_deposit_sol = min_sol;
+        }
+        if let Some(min_token) = min_deposit_token {
+            vault.min_deposit_token = min_token;
+        }
+        if let Some(rate) = reward_share_rate {
+            require!(rate <= 10000, VaultError::InvalidRate);
+            vault.reward_share_rate = rate;
+        }
+        if let Some(enabled) = staking_enabled {
+            vault.staking_enabled = enabled;
+        }
+
+        msg!("Vault config updated");
+        Ok(())
+    }
+
+    /// Get current rewards for a merchant deposit with dynamic yield
+    pub fn calculate_rewards(ctx: Context<CalculateRewards>) -> Result<u64> {
+        let merchant_deposit = &ctx.accounts.merchant_deposit;
+
+        require!(merchant_deposit.is_active, VaultError::DepositNotActive);
+
+        let current_time = Clock::get()?.unix_timestamp;
+        let time_elapsed = current_time - merchant_deposit.deposited_at;
+        let days_elapsed = time_elapsed / 86400;
+
+        // Calculate dynamic yield APY based on lock period, volume, and profit share
+        let yield_bps = calculate_dynamic_yield(
+            merchant_deposit,
+            merchant_deposit.total_deposited,
+        );
+
+        // Convert BPS to percentage (e.g., 1200 BPS = 12%)
+        let annual_reward = merchant_deposit.total_deposited
+            .checked_mul(yield_bps as u64)
+            .ok_or(VaultError::MathOverflow)?
+            .checked_div(10000)
+            .ok_or(VaultError::MathOverflow)?;
+
+        let daily_reward = annual_reward
+            .checked_div(365)
+            .ok_or(VaultError::MathOverflow)?;
+
+        let total_rewards = daily_reward
+            .checked_mul(days_elapsed as u64)
+            .ok_or(VaultError::MathOverflow)?;
+
+        msg!("Current rewards: {} (yield: {}% APY, days: {})",
+            total_rewards,
+            yield_bps as f64 / 100.0,
+            days_elapsed
+        );
+        Ok(total_rewards)
+    }
+
+    /// Record a processed order to update merchant metrics
+    /// Called by payment processor agent after successful split
+    pub fn record_order(
+        ctx: Context<RecordOrder>,
+        order_amount_usd: u64,
+        _buyer_wallet: Pubkey,
+    ) -> Result<()> {
+        let authorized_agent = &ctx.accounts.authorized_agent;
+        let merchant_deposit = &mut ctx.accounts.merchant_deposit;
+
+        // Verify agent is authorized and active
+        require!(authorized_agent.is_active, VaultError::UnauthorizedAgent);
+        require!(
+            authorized_agent.agent == ctx.accounts.agent.key(),
+            VaultError::UnauthorizedAgent
+        );
+        require!(
+            authorized_agent.merchant == merchant_deposit.merchant,
+            VaultError::UnauthorizedAgent
+        );
+
+        let current_time = Clock::get()?.unix_timestamp;
+
+        // Reset monthly volume if new month started
+        let month_elapsed = (current_time - merchant_deposit.last_volume_reset) / 2592000; // ~30 days
+        if month_elapsed >= 1 {
+            msg!("Resetting monthly volume (new month started)");
+            merchant_deposit.current_month_volume = 0;
+            merchant_deposit.monthly_unique_customers = 0;
+            merchant_deposit.last_volume_reset = current_time;
+        }
+
+        // Validate minimum order amount (anti-gaming)
+        require!(order_amount_usd >= 10_000000, VaultError::OrderTooSmall); // $10 minimum
+
+        // Update metrics
+        merchant_deposit.total_orders_processed = merchant_deposit
+            .total_orders_processed
+            .checked_add(1)
+            .ok_or(VaultError::MathOverflow)?;
+
+        merchant_deposit.total_volume_usd = merchant_deposit
+            .total_volume_usd
+            .checked_add(order_amount_usd)
+            .ok_or(VaultError::MathOverflow)?;
+
+        merchant_deposit.current_month_volume = merchant_deposit
+            .current_month_volume
+            .checked_add(order_amount_usd)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Track unique customer (simplified - in production, use a bloom filter or separate account)
+        merchant_deposit.monthly_unique_customers = merchant_deposit
+            .monthly_unique_customers
+            .checked_add(1)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Recalculate current yield based on new metrics (lock period, volume, profit share)
+        merchant_deposit.current_yield_bps = calculate_dynamic_yield(
+            merchant_deposit,
+            merchant_deposit.total_deposited,
+        );
+
+        msg!("Order recorded: ${} | Total volume: ${} | Current yield: {}% APY",
+            order_amount_usd / 1_000000,
+            merchant_deposit.current_month_volume / 1_000000,
+            merchant_deposit.current_yield_bps as f64 / 100.0
+        );
+
+        Ok(())
+    }
+
+    /// Get merchant tier based on performance
+    pub fn get_merchant_tier(ctx: Context<GetMerchantTier>) -> Result<u8> {
+        let merchant_deposit = &ctx.accounts.merchant_deposit;
+
+        let tier = calculate_merchant_tier(
+            merchant_deposit.current_month_volume,
+            merchant_deposit.deposited_at,
+            Clock::get()?.unix_timestamp,
+        );
+
+        msg!("Merchant tier: {} (volume: ${}, yield: {}%)",
+            tier_name(tier),
+            merchant_deposit.current_month_volume / 1_000000,
+            merchant_deposit.current_yield_bps as f64 / 100.0
+        );
+
+        Ok(tier)
+    }
+
+    /// Record platform profit from merchant's orders
+    /// Called by platform after order processing to track profit sharing
+    /// Platform gives up to 50% of profit back to merchant as yield boost
+    pub fn record_platform_profit(
+        ctx: Context<RecordPlatformProfit>,
+        platform_profit_amount: u64,
+    ) -> Result<()> {
+        let vault = &ctx.accounts.vault;
+        let merchant_deposit = &mut ctx.accounts.merchant_deposit;
+
+        // SECURITY: Verify caller is authorized (platform authority or authorized agent)
+        require!(
+            ctx.accounts.platform.key() == vault.authority,
+            VaultError::Unauthorized
+        );
+
+        // Track total platform profit earned from this merchant
+        merchant_deposit.platform_profit_earned = merchant_deposit
+            .platform_profit_earned
+            .checked_add(platform_profit_amount)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Calculate 50% profit share
+        let total_profit_share = platform_profit_amount
+            .checked_div(2)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Calculate current APY cap for this merchant's lock period
+        let lock_max_apy = merchant_deposit.lock_period.max_apy_bps();
+        let total_deposited_value = merchant_deposit.total_deposited;
+
+        // Calculate maximum allowed profit share allocation (to not exceed APY cap)
+        // max_profit_share_bps = lock_max_apy - BASE_YIELD_BPS - volume_bonus
+        const BASE_YIELD_BPS: u16 = 300;
+
+        // Current profit share in BPS
+        let current_profit_share_bps = if total_deposited_value > 0 {
+            ((merchant_deposit.profit_share_allocated as u128)
+                .checked_mul(10000)
+                .unwrap_or(0)
+                .checked_div(total_deposited_value as u128)
+                .unwrap_or(0)) as u16
+        } else {
+            0
+        };
+
+        // Available space for more profit share
+        let max_profit_share_bps = lock_max_apy.saturating_sub(BASE_YIELD_BPS);
+        let remaining_space_bps = max_profit_share_bps.saturating_sub(current_profit_share_bps);
+
+        // Convert remaining space to absolute amount
+        let max_additional_profit_share = if total_deposited_value > 0 {
+            (total_deposited_value as u128)
+                .checked_mul(remaining_space_bps as u128)
+                .unwrap_or(0)
+                .checked_div(10000)
+                .unwrap_or(0) as u64
+        } else {
+            0
+        };
+
+        // Split profit share: allocate up to cap, excess goes to immediate rewards
+        let (profit_share_allocated, excess_rewards) = if total_profit_share <= max_additional_profit_share {
+            // All profit share fits within APY cap
+            (total_profit_share, 0)
+        } else {
+            // Cap profit share, rest becomes immediate rewards
+            (max_additional_profit_share, total_profit_share - max_additional_profit_share)
+        };
+
+        // Update profit share allocation
+        merchant_deposit.profit_share_allocated = merchant_deposit
+            .profit_share_allocated
+            .checked_add(profit_share_allocated)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Add excess to accrued rewards (doesn't affect APY, immediate payout)
+        merchant_deposit.accrued_rewards = merchant_deposit
+            .accrued_rewards
+            .checked_add(excess_rewards)
+            .ok_or(VaultError::MathOverflow)?;
+
+        // Recalculate yield with new profit share
+        merchant_deposit.current_yield_bps = calculate_dynamic_yield(
+            merchant_deposit,
+            merchant_deposit.total_deposited,
+        );
+
+        msg!(
+            "Platform profit recorded: ${} | Profit share: ${} | Excess rewards: ${} | New yield: {}%",
+            platform_profit_amount / 1_000000,
+            profit_share_allocated / 1_000000,
+            excess_rewards / 1_000000,
+            merchant_deposit.current_yield_bps as f64 / 100.0
+        );
+
+        Ok(())
+    }
+
+    /// Register an agent to process orders for a merchant
+    /// Only the merchant can authorize their own agents
+    pub fn register_agent(ctx: Context<RegisterAgent>) -> Result<()> {
+        let authorized_agent = &mut ctx.accounts.authorized_agent;
+        let current_time = Clock::get()?.unix_timestamp;
+
+        authorized_agent.merchant = ctx.accounts.merchant.key();
+        authorized_agent.agent = ctx.accounts.agent.key();
+        authorized_agent.vault = ctx.accounts.vault.key();
+        authorized_agent.authorized_at = current_time;
+        authorized_agent.is_active = true;
+        authorized_agent.bump = ctx.bumps.authorized_agent;
+
+        msg!(
+            "Agent {} authorized for merchant {}",
+            ctx.accounts.agent.key(),
+            ctx.accounts.merchant.key()
+        );
+
+        Ok(())
+    }
+
+    /// Revoke agent authorization
+    /// Only the merchant can revoke their own agents
+    pub fn revoke_agent(ctx: Context<RevokeAgent>) -> Result<()> {
+        let authorized_agent = &mut ctx.accounts.authorized_agent;
+
+        require!(
+            authorized_agent.merchant == ctx.accounts.merchant.key(),
+            VaultError::Unauthorized
+        );
+
+        authorized_agent.is_active = false;
+
+        msg!(
+            "Agent {} revoked for merchant {}",
+            authorized_agent.agent,
+            authorized_agent.merchant
+        );
+
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Yield Calculation Functions
+// ============================================================================
+
+/// Calculate dynamic yield based on lock period, volume, and profit sharing
+/// Returns yield in basis points (BPS), e.g., 650 = 6.5%
+///
+/// New Economic Model (MVP):
+/// - Base: 3% guaranteed
+/// - Volume Bonus: Linear scaling based on monthly volume
+/// - Profit Share Bonus: Up to 50% of platform profit from merchant's orders
+/// - Capped at lock period maximum APY
+fn calculate_dynamic_yield(merchant_deposit: &MerchantDeposit, total_deposited_value: u64) -> u16 {
+    const BASE_YIELD_BPS: u16 = 300; // 3.00% guaranteed
+    const TARGET_MONTHLY_VOLUME: u64 = 1_000_000_000000; // $1M target for max volume bonus
+
+    // 1. Start with base 3%
+    let mut yield_bps = BASE_YIELD_BPS;
+
+    // 2. Calculate profit share bonus (up to 50% of platform profit)
+    // Convert profit share to APY percentage
+    let profit_share_bonus_bps = if total_deposited_value > 0 {
+        // profit_share_allocated is in micro-units (USDC 6 decimals)
+        // Calculate as percentage of deposit
+        let bonus_ratio = (merchant_deposit.profit_share_allocated as u128)
+            .checked_mul(10000) // Convert to basis points
+            .unwrap_or(0)
+            .checked_div(total_deposited_value as u128)
+            .unwrap_or(0);
+        bonus_ratio.min(u16::MAX as u128) as u16
+    } else {
+        0
+    };
+
+    yield_bps = yield_bps.saturating_add(profit_share_bonus_bps);
+
+    // 3. Calculate available space for volume bonus
+    let lock_max_apy = merchant_deposit.lock_period.max_apy_bps();
+    let available_for_volume = lock_max_apy.saturating_sub(yield_bps);
+
+    // 4. Calculate volume bonus (linear scaling)
+    // Scales from 0 to available_for_volume based on monthly volume
+    let volume_bonus_bps = if available_for_volume > 0 {
+        if merchant_deposit.current_month_volume >= TARGET_MONTHLY_VOLUME {
+            available_for_volume
+        } else {
+            // Linear: (current_volume / target_volume) * available_space
+            let volume_ratio = (merchant_deposit.current_month_volume as u128)
+                .checked_mul(available_for_volume as u128)
+                .unwrap_or(0)
+                .checked_div(TARGET_MONTHLY_VOLUME)
+                .unwrap_or(0);
+            volume_ratio.min(available_for_volume as u128) as u16
+        }
+    } else {
+        0
+    };
+
+    yield_bps = yield_bps.saturating_add(volume_bonus_bps);
+
+    // 5. Cap at lock period maximum
+    yield_bps = yield_bps.min(lock_max_apy);
+
+    yield_bps
+}
+
+/// Calculate merchant tier (0=Bronze, 1=Silver, 2=Gold, 3=Platinum)
+fn calculate_merchant_tier(monthly_volume_usd: u64, deposited_at: i64, current_time: i64) -> u8 {
+    let days_deposited = (current_time - deposited_at) / 86400;
+
+    // Tier thresholds
+    const TIER_BRONZE: u8 = 0;
+    const TIER_SILVER: u8 = 1;
+    const TIER_GOLD: u8 = 2;
+    const TIER_PLATINUM: u8 = 3;
+
+    // Volume in micro-units (6 decimals): $10k = 10_000_000000
+    const VOLUME_SILVER: u64 = 10_000_000000;    // $10k/month
+    const VOLUME_GOLD: u64 = 50_000_000000;      // $50k/month
+    const VOLUME_PLATINUM: u64 = 200_000_000000; // $200k/month
+
+    const DAYS_SILVER: i64 = 90;
+    const DAYS_GOLD: i64 = 180;
+    const DAYS_PLATINUM: i64 = 365;
+
+    // Determine tier based on both volume AND time
+    if monthly_volume_usd >= VOLUME_PLATINUM && days_deposited >= DAYS_PLATINUM {
+        TIER_PLATINUM
+    } else if monthly_volume_usd >= VOLUME_GOLD && days_deposited >= DAYS_GOLD {
+        TIER_GOLD
+    } else if monthly_volume_usd >= VOLUME_SILVER && days_deposited >= DAYS_SILVER {
+        TIER_SILVER
+    } else {
+        TIER_BRONZE
+    }
+}
+
+/// Get tier name for display
+fn tier_name(tier: u8) -> &'static str {
+    match tier {
+        0 => "Bronze",
+        1 => "Silver",
+        2 => "Gold",
+        3 => "Platinum",
+        _ => "Unknown",
+    }
+}
+
+// ============================================================================
+// Account Contexts
+// ============================================================================
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + Vault::LEN,
+        seeds = [b"vault", authority.key().as_ref()],
+        bump
+    )]
+    pub vault: Account<'info, Vault>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DepositSol<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        init_if_needed,
+        payer = merchant,
+        space = 8 + MerchantDeposit::LEN,
+        seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()],
+        bump
+    )]
+    pub merchant_deposit: Account<'info, MerchantDeposit>,
+
+    /// CHECK: Vault's SOL account (PDA)
+    #[account(
+        mut,
+        seeds = [b"vault_sol", vault.key().as_ref()],
+        bump
+    )]
+    pub vault_sol_account: AccountInfo<'info>,
+
+    #[account(mut)]
+    pub merchant: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DepositTokenAccounts<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        init_if_needed,
+        payer = merchant,
+        space = 8 + MerchantDeposit::LEN,
+        seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()],
+        bump
+    )]
+    pub merchant_deposit: Account<'info, MerchantDeposit>,
+
+    #[account(mut)]
+    pub merchant_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub merchant: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        mut,
+        seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()],
+        bump = merchant_deposit.bump
+    )]
+    pub merchant_deposit: Account<'info, MerchantDeposit>,
+
+    /// CHECK: Vault's SOL account (PDA)
+    #[account(
+        mut,
+        seeds = [b"vault_sol", vault.key().as_ref()],
+        bump
+    )]
+    pub vault_sol_account: AccountInfo<'info>,
+
+    #[account(mut)]
+    pub merchant_token_account: Option<Account<'info, TokenAccount>>,
+
+    #[account(mut)]
+    pub vault_token_account: Option<Account<'info, TokenAccount>>,
+
+    #[account(mut)]
+    pub merchant: Signer<'info>,
+
+    pub token_program: Option<Program<'info, Token>>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateVaultConfig<'info> {
+    #[account(mut, seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CalculateRewards<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()], bump = merchant_deposit.bump)]
+    pub merchant_deposit: Account<'info, MerchantDeposit>,
+
+    pub merchant: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct RecordOrder<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        mut,
+        seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()],
+        bump = merchant_deposit.bump
+    )]
+    pub merchant_deposit: Account<'info, MerchantDeposit>,
+
+    /// Authorization record for this agent-merchant pair
+    #[account(
+        seeds = [b"agent_auth", vault.key().as_ref(), merchant.key().as_ref(), agent.key().as_ref()],
+        bump = authorized_agent.bump
+    )]
+    pub authorized_agent: Account<'info, AuthorizedAgent>,
+
+    /// Agent that processed the order (must be merchant's agent)
+    pub agent: Signer<'info>,
+
+    /// Merchant wallet (for verification)
+    /// CHECK: Verified via PDA seeds
+    pub merchant: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct GetMerchantTier<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()], bump = merchant_deposit.bump)]
+    pub merchant_deposit: Account<'info, MerchantDeposit>,
+
+    pub merchant: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct RecordPlatformProfit<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        mut,
+        seeds = [b"deposit", vault.key().as_ref(), merchant.key().as_ref()],
+        bump = merchant_deposit.bump
+    )]
+    pub merchant_deposit: Account<'info, MerchantDeposit>,
+
+    /// Platform authority or agent that processed the order
+    pub platform: Signer<'info>,
+
+    /// Merchant wallet (for verification)
+    /// CHECK: Verified via PDA seeds
+    pub merchant: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct RegisterAgent<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        init,
+        payer = merchant,
+        space = 8 + AuthorizedAgent::LEN,
+        seeds = [b"agent_auth", vault.key().as_ref(), merchant.key().as_ref(), agent.key().as_ref()],
+        bump
+    )]
+    pub authorized_agent: Account<'info, AuthorizedAgent>,
+
+    /// Agent public key to authorize
+    /// CHECK: Can be any pubkey
+    pub agent: AccountInfo<'info>,
+
+    /// Merchant authorizing the agent
+    #[account(mut)]
+    pub merchant: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RevokeAgent<'info> {
+    #[account(seeds = [b"vault", vault.authority.as_ref()], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+
+    #[account(
+        mut,
+        seeds = [b"agent_auth", vault.key().as_ref(), merchant.key().as_ref(), agent.key().as_ref()],
+        bump = authorized_agent.bump
+    )]
+    pub authorized_agent: Account<'info, AuthorizedAgent>,
+
+    /// Agent to revoke
+    /// CHECK: Verified via PDA seeds
+    pub agent: AccountInfo<'info>,
+
+    /// Merchant revoking the agent
+    pub merchant: Signer<'info>,
+}
+
+// ============================================================================
+// Account Structures
+// ============================================================================
+
+#[account]
+pub struct Vault {
+    /// Authority that can update vault parameters
+    pub authority: Pubkey,
+    /// Bump seed for PDA
+    pub bump: u8,
+    /// Total deposits in vault
+    pub total_deposits: u64,
+    /// Number of merchants with active deposits
+    pub total_merchants: u32,
+    /// Minimum SOL deposit required
+    pub min_deposit_sol: u64,
+    /// Minimum token deposit required
+    pub min_deposit_token: u64,
+    /// Reward share rate for merchants (basis points, e.g. 8000 = 80%)
+    pub reward_share_rate: u16,
+    /// Whether staking is enabled
+    pub staking_enabled: bool,
+}
+
+impl Vault {
+    pub const LEN: usize = 32 + 1 + 8 + 4 + 8 + 8 + 2 + 1;
+}
+
+#[account]
+pub struct MerchantDeposit {
+    /// Merchant public key
+    pub merchant: Pubkey,
+    /// Vault this deposit belongs to
+    pub vault: Pubkey,
+    /// Type of deposit (SOL or SPL Token)
+    pub deposit_token: DepositType,
+    /// Total amount deposited
+    pub total_deposited: u64,
+    /// Accrued rewards (updated on withdrawal)
+    pub accrued_rewards: u64,
+    /// Whether deposit is active
+    pub is_active: bool,
+    /// Timestamp of deposit
+    pub deposited_at: i64,
+    /// Bump seed for PDA
+    pub bump: u8,
+
+    // Performance metrics for dynamic yield
+    /// Total orders processed (lifetime)
+    pub total_orders_processed: u64,
+    /// Total volume in USD (micro-units, 6 decimals)
+    pub total_volume_usd: u64,
+    /// Current month volume in USD
+    pub current_month_volume: u64,
+    /// Timestamp of last volume reset
+    pub last_volume_reset: i64,
+    /// Monthly unique customers (simplified tracking)
+    pub monthly_unique_customers: u32,
+    /// Current yield in basis points (e.g., 1200 = 12%)
+    pub current_yield_bps: u16,
+
+    // Lock period and profit sharing
+    /// Lock period selection (6mo/1yr/3yr/5yr)
+    pub lock_period: LockPeriod,
+    /// Unlock timestamp (deposited_at + lock_period)
+    pub unlock_time: i64,
+    /// Platform profit earned from this merchant's orders (for profit share calculation)
+    pub platform_profit_earned: u64,
+    /// Profit share bonus allocated (up to 50% of platform profit)
+    pub profit_share_allocated: u64,
+}
+
+impl MerchantDeposit {
+    // 32 + 32 + 1 + 8 + 8 + 1 + 8 + 1 + 8 + 8 + 8 + 8 + 4 + 2 + 1 + 8 + 8 + 8
+    pub const LEN: usize = 32 + 32 + 1 + 8 + 8 + 1 + 8 + 1 + 8 + 8 + 8 + 8 + 4 + 2 + 1 + 8 + 8 + 8;
+}
+
+#[account]
+pub struct AuthorizedAgent {
+    /// Merchant who authorized this agent
+    pub merchant: Pubkey,
+    /// Agent public key (payment processor)
+    pub agent: Pubkey,
+    /// Vault this authorization belongs to
+    pub vault: Pubkey,
+    /// When this agent was authorized
+    pub authorized_at: i64,
+    /// Whether this authorization is active
+    pub is_active: bool,
+    /// Bump seed for PDA
+    pub bump: u8,
+}
+
+impl AuthorizedAgent {
+    pub const LEN: usize = 32 + 32 + 32 + 8 + 1 + 1;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+pub enum DepositType {
+    Sol,
+    SplToken,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
+pub enum LockPeriod {
+    SixMonths,    // 180 days, max 5% APY
+    OneYear,      // 365 days, max 6.5% APY
+    ThreeYears,   // 1095 days, max 9% APY
+    FiveYears,    // 1825 days, max 11.5% APY
+}
+
+impl LockPeriod {
+    /// Get lock duration in seconds
+    pub fn duration_seconds(&self) -> i64 {
+        match self {
+            LockPeriod::SixMonths => 180 * 86400,   // 180 days
+            LockPeriod::OneYear => 365 * 86400,     // 365 days
+            LockPeriod::ThreeYears => 1095 * 86400, // 1095 days
+            LockPeriod::FiveYears => 1825 * 86400,  // 1825 days
+        }
+    }
+
+    /// Get maximum APY in basis points for this lock period
+    pub fn max_apy_bps(&self) -> u16 {
+        match self {
+            LockPeriod::SixMonths => 500,   // 5.0%
+            LockPeriod::OneYear => 650,     // 6.5%
+            LockPeriod::ThreeYears => 900,  // 9.0%
+            LockPeriod::FiveYears => 1150,  // 11.5%
+        }
+    }
+}
+
+// ============================================================================
+// Errors
+// ============================================================================
+
+#[error_code]
+pub enum VaultError {
+    #[msg("Deposit amount below minimum requirement")]
+    InsufficientDeposit,
+    #[msg("Deposit is not active")]
+    DepositNotActive,
+    #[msg("Unauthorized access")]
+    Unauthorized,
+    #[msg("Math overflow")]
+    MathOverflow,
+    #[msg("Invalid rate (must be <= 10000 basis points)")]
+    InvalidRate,
+    #[msg("Order amount too small (minimum $10)")]
+    OrderTooSmall,
+    #[msg("Missing required token account")]
+    MissingTokenAccount,
+    #[msg("Deposit is still locked. Check unlock_time.")]
+    DepositStillLocked,
+    #[msg("Agent is not authorized for this merchant")]
+    UnauthorizedAgent,
+}

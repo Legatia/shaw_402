@@ -1,0 +1,1 @@
+{"version":3,"file":"get-server-context.d.ts","sourceRoot":"","sources":["../../src/lib/get-server-context.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAEH,OAAO,EAAE,YAAY,EAAmB,MAAM,wBAAwB,CAAC;AACvE,OAAO,EAAE,SAAS,EAAO,MAAM,iBAAiB,CAAC;AAEjD,MAAM,WAAW,aAAa;IAC5B,MAAM,EAAE,YAAY,CAAC;IACrB,GAAG,EAAE,SAAS,CAAC;CAChB;AAID,wBAAgB,gBAAgB,IAAI,aAAa,CAahD"}
