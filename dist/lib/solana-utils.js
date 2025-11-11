@@ -6,7 +6,7 @@ import { createSolanaRpc, createSolanaRpcSubscriptions, address } from 'gill';
 import { SignatureVerificationError } from '../errors/index.js';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
-import { Connection, Transaction, SystemProgram, sendAndConfirmTransaction, } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, } from '@solana/web3.js';
 import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createTransferInstruction, getAccount, } from '@solana/spl-token';
 export class SolanaUtils {
     rpc;
@@ -347,6 +347,27 @@ export class SolanaUtils {
         catch (error) {
             console.error('  Sponsored transaction error:', error);
             throw new Error(`Failed to submit sponsored transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+    /**
+     * Verify a wallet signature for merchant cancellation or other operations
+     * @param walletAddress - Public key of the wallet that signed
+     * @param message - Original message that was signed
+     * @param signature - Base58 encoded signature
+     * @returns true if signature is valid
+     */
+    async verifyWalletSignature(walletAddress, message, signature) {
+        try {
+            const publicKey = new PublicKey(walletAddress);
+            const messageBytes = new TextEncoder().encode(message);
+            const signatureBytes = bs58.decode(signature);
+            // Verify using nacl
+            const verified = nacl.sign.detached.verify(messageBytes, signatureBytes, publicKey.toBytes());
+            return verified;
+        }
+        catch (error) {
+            console.error('Signature verification error:', error);
+            return false;
         }
     }
 }

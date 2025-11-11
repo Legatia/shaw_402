@@ -461,4 +461,27 @@ export class SolanaUtils {
       );
     }
   }
+
+  /**
+   * Verify a wallet signature for merchant cancellation or other operations
+   * @param walletAddress - Public key of the wallet that signed
+   * @param message - Original message that was signed
+   * @param signature - Base58 encoded signature
+   * @returns true if signature is valid
+   */
+  async verifyWalletSignature(walletAddress: string, message: string, signature: string): Promise<boolean> {
+    try {
+      const publicKey = new PublicKey(walletAddress);
+      const messageBytes = new TextEncoder().encode(message);
+      const signatureBytes = bs58.decode(signature);
+
+      // Verify using nacl
+      const verified = nacl.sign.detached.verify(messageBytes, signatureBytes, publicKey.toBytes());
+
+      return verified;
+    } catch (error) {
+      console.error('Signature verification error:', error);
+      return false;
+    }
+  }
 }

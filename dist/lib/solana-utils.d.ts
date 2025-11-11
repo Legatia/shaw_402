@@ -135,5 +135,13 @@ export declare class SolanaUtils {
      * @returns Transaction signature
      */
     submitSponsoredTransaction(facilitatorPrivateKey: string, serializedTransaction: string): Promise<string>;
+    /**
+     * Verify a wallet signature for merchant cancellation or other operations
+     * @param walletAddress - Public key of the wallet that signed
+     * @param message - Original message that was signed
+     * @param signature - Base58 encoded signature
+     * @returns true if signature is valid
+     */
+    verifyWalletSignature(walletAddress: string, message: string, signature: string): Promise<boolean>;
 }
 //# sourceMappingURL=solana-utils.d.ts.map

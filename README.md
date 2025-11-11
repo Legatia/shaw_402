@@ -34,11 +34,12 @@ Shaw 402 is a decentralized affiliate commerce platform that enables merchants t
 ## ✨ Features
 
 ### For Merchants
-- **One-Click Registration**: 1 SOL one-time fee, get instant setup
+- **One-Click Registration**: 1 SOL refundable security deposit, get instant setup
 - **Automatic Agent Provisioning**: Dedicated payment processor with USDC wallet
 - **Affiliate Program**: Unique recruitment link with custom commission rates
 - **Real-time Tracking**: Monitor transactions and commissions
 - **Vault Deposits**: Lock SOL/USDC to earn dynamic APY based on performance
+- **Cancel Anytime**: Get your 1 SOL deposit back when you cancel service
 
 ### For Affiliates
 - **15% Commission**: Automatic USDC payouts on every sale
@@ -352,7 +353,7 @@ APY = Base (3%) + Volume Bonus (0-3.5%) + Profit Share (0-5%)
 | `SERVER_PORT` | Hub server port | 3000 |
 | `SOLANA_NETWORK` | Network (devnet/mainnet) | devnet |
 | `PLATFORM_WALLET` | Platform fee destination | Required |
-| `REGISTRATION_FEE` | Merchant registration (lamports) | 1000000000 (1 SOL) |
+| `REGISTRATION_FEE` | Merchant security deposit (lamports) | 1000000000 (1 SOL, refundable) |
 | `VAULT_PROGRAM_ID` | Deployed vault contract | Required |
 
 ### Commission Rates
@@ -361,6 +362,19 @@ Default rates (configurable per merchant):
 - **Platform**: 5%
 - **Affiliate**: 15%
 - **Merchant**: 80%
+
+### Merchant Cancellation Policy
+
+**Refundable Security Deposit:**
+- The 1 SOL registration deposit is fully refundable
+- Merchants can cancel service at any time
+- Upon cancellation:
+  - Your 1 SOL deposit is returned to your wallet
+  - All merchant data is removed from our database
+  - Agent wallet is deactivated
+  - Affiliate links are deactivated
+- No cancellation fees or penalties
+- Processing time: Instant on-chain refund
 
 ## 🧪 Testing
 

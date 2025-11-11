@@ -1,43 +1,20 @@
-# Environment Variables
+# ==============================================================================
+# SECURITY - NEVER COMMIT THESE!
+# ==============================================================================
+
+# Environment Variables (contain secrets)
 .env
 .env.local
 .env.production
+.env.*.local
+.env.development
+.env.test
 
-# OS Files
-.DS_Store
-Thumbs.db
+# IMPORTANT: env.example / .env.example are NOT ignored!
+# They are templates with placeholder values and MUST be committed to the repo.
+# Always ensure env.example has NO real secrets before committing!
 
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-
-# Build Output
-dist/
-build/
-*.log
-
-# Databases
-*.db
-*.db-journal
-*.db-shm
-*.db-wal
-data/
-
-# PM2
-.pm2/
-logs/
-*.pid
-
-# Solana
-.anchor/
-target/
-**/.DS_Store
-test-ledger/
-
-# Keypairs (Security - Never commit these!)
+# Keypairs (CRITICAL - These control wallets!)
 *-keypair.json
 *.json.key
 id.json
@@ -47,39 +24,281 @@ facilitator-keypair.json
 platform-keypair.json
 merchant-keypair.json
 vault-authority.json
+wallet-*.json
+*.pem
+*.key
 
-# IDE
+# Private keys and secrets
+private-keys/
+secrets/
+.secrets/
+
+# ==============================================================================
+# BUILD & DEPENDENCIES
+# ==============================================================================
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Build Output
+dist/
+build/
+out/
+*.log
+
+# TypeScript
+*.tsbuildinfo
+.tsbuildinfo
+
+# ==============================================================================
+# DATABASES
+# ==============================================================================
+
+# SQLite
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Database data directories
+data/
+db/
+database/
+
+# Backups
+*.backup
+*.dump
+*.sql.gz
+
+# ==============================================================================
+# PROCESS MANAGEMENT
+# ==============================================================================
+
+# PM2
+.pm2/
+logs/
+*.pid
+pids/
+*.seed
+*.pid.lock
+
+# System logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==============================================================================
+# BLOCKCHAIN & SOLANA
+# ==============================================================================
+
+# Anchor
+.anchor/
+target/
+test-ledger/
+validator-keypair.json
+
+# Solana CLI
+.config/solana/
+
+# Rust
+Cargo.lock
+**/*.rs.bk
+
+# ==============================================================================
+# DEVELOPMENT TOOLS
+# ==============================================================================
+
+# IDE - VSCode
 .vscode/
+*.code-workspace
+
+# IDE - JetBrains
 .idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# IDE - Vim
 *.swp
 *.swo
 *.swn
-.history/
+*~
 
-# Testing
+# IDE - Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# History
+.history/
+.vscode-test/
+
+# ==============================================================================
+# TESTING & COVERAGE
+# ==============================================================================
+
+# Test coverage
 coverage/
 .nyc_output/
+*.lcov
+
+# Test results
+test-results/
+junit.xml
+
+# ==============================================================================
+# OPERATING SYSTEMS
+# ==============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ==============================================================================
+# TEMPORARY & CACHE FILES
+# ==============================================================================
 
 # Temporary files
 *.tmp
 *.temp
 /tmp/
+.tmp/
+temp/
 
 # Cache
 .cache/
 .parcel-cache/
 .eslintcache
-
-# macOS
-.AppleDouble
-.LSOverride
-._*
-
-# Windows
-Desktop.ini
-$RECYCLE.BIN/
+.stylelintcache
+*.cache
+.sass-cache/
 
 # Editor backups
-*~
 *.bak
 *.orig
+*.rej
+*~
+
+# ==============================================================================
+# MISCELLANEOUS
+# ==============================================================================
+
+# Environment-specific
+.env.development
+.env.test
+.env.production.local
+
+# Lock files (optional - uncomment if you want to ignore)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Debug files
+debug/
+.debug/
+
+# Documentation builds
+docs/_build/
+site/
+
+# Python (if using Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+ENV/
+
+# Certificates
+*.crt
+*.cer
+*.der
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Large media files (optional)
+# *.mp4
+# *.mov
+# *.avi
+# *.png
+# *.jpg
+# *.jpeg
+
+# ==============================================================================
+# PROJECT SPECIFIC
+# ==============================================================================
+
+# Server logs
+/tmp/shaw-server.log
+/tmp/platform-test.json
+/tmp/vault-auth-test.json
+
+# Test wallets (if any)
+test-wallet*.json
+
+# Local configuration overrides
+config.local.js
+config.local.json
+
+# Simulation results
+simulations/results/
+
+# Generated IDL files (can be regenerated)
+# target/idl/
+# target/types/

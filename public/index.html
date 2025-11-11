@@ -372,9 +372,10 @@
 
             <div class="highlight-box">
                 <h3>💎 Platform Economics</h3>
-                <p><strong>Registration:</strong> 1 SOL one-time fee</p>
+                <p><strong>Security Deposit:</strong> 1 SOL (refundable when you cancel)</p>
                 <p><strong>Commissions:</strong> All in USDC (Platform 5% • Affiliate 15% • You 80%)</p>
                 <p><strong>Bonus:</strong> We fund your agent with 0.01 SOL for gas fees</p>
+                <p style="font-size: 12px; color: #666; margin-top: 8px;">💡 Your 1 SOL deposit is fully refundable. Cancel anytime and get it back!</p>
             </div>
 
             <div id="statusMessage" class="status-message"></div>
@@ -398,7 +399,7 @@
                 </div>
 
                 <button id="registerBtn" class="btn btn-success">
-                    💸 Pay 1 SOL & Register
+                    💰 Deposit 1 SOL & Register
                 </button>
             </div>
 
@@ -593,7 +594,7 @@
                 console.error('❌ Registration error:', err);
                 showStatus('Registration failed: ' + err.message, 'error');
                 registerBtn.disabled = false;
-                registerBtn.innerHTML = '💸 Pay 1 SOL & Register';
+                registerBtn.innerHTML = '💰 Deposit 1 SOL & Register';
             }
         });
 

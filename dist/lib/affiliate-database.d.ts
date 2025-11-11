@@ -11,11 +11,14 @@ export interface MerchantData {
     platformFeeRate: number;
     affiliateFeeRate: number;
     registrationTxSignature: string;
-    status: 'active' | 'suspended' | 'inactive';
+    status: 'active' | 'suspended' | 'inactive' | 'cancelled';
     settlementToken: 'USDC';
     usdcMint: string;
     agentUSDCAccount: string;
     merchantUSDCAccount: string;
+    cancelledAt?: string;
+    refundTxSignature?: string;
+    depositAmount?: string;
 }
 export interface AffiliateData {
     affiliateId: string;
@@ -87,6 +90,10 @@ export declare class AffiliateDatabase {
      * Get merchant by agent wallet
      */
     getMerchantByAgentWallet(agentWallet: string): Promise<MerchantData | null>;
+    /**
+     * Cancel merchant and process refund
+     */
+    cancelMerchant(merchantId: string, refundTxSignature: string): Promise<void>;
     /**
      * Store a new affiliate
      */

@@ -42,7 +42,7 @@ export class AffiliateDatabase {
           business_name TEXT NOT NULL,
           merchant_wallet TEXT NOT NULL,
           agent_wallet TEXT UNIQUE NOT NULL,
-          agent_private_key TEXT NOT NULL,
+          agent_private_key TEXT,
           platform_fee_rate REAL DEFAULT 0.05,
           affiliate_fee_rate REAL DEFAULT 0.15,
           registration_tx_signature TEXT,
@@ -51,6 +51,9 @@ export class AffiliateDatabase {
           usdc_mint TEXT NOT NULL,
           agent_usdc_account TEXT NOT NULL,
           merchant_usdc_account TEXT NOT NULL,
+          deposit_amount TEXT DEFAULT '1000000000',
+          cancelled_at DATETIME,
+          refund_tx_signature TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `;
@@ -172,8 +175,8 @@ export class AffiliateDatabase {
           merchant_id, business_name, merchant_wallet, agent_wallet,
           agent_private_key, platform_fee_rate, affiliate_fee_rate,
           registration_tx_signature, status, settlement_token,
-          usdc_mint, agent_usdc_account, merchant_usdc_account
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          usdc_mint, agent_usdc_account, merchant_usdc_account, deposit_amount
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
             this.db.run(sql, [
                 merchantData.merchantId,
@@ -189,6 +192,7 @@ export class AffiliateDatabase {
                 merchantData.usdcMint,
                 merchantData.agentUSDCAccount,
                 merchantData.merchantUSDCAccount,
+                merchantData.depositAmount || '1000000000',
             ], function (err) {
                 if (err) {
                     if (err.message.includes('UNIQUE constraint failed')) {
@@ -232,6 +236,9 @@ export class AffiliateDatabase {
                     usdcMint: row.usdc_mint,
                     agentUSDCAccount: row.agent_usdc_account,
                     merchantUSDCAccount: row.merchant_usdc_account,
+                    depositAmount: row.deposit_amount,
+                    cancelledAt: row.cancelled_at,
+                    refundTxSignature: row.refund_tx_signature,
                 });
             });
         });
@@ -265,6 +272,48 @@ export class AffiliateDatabase {
                     usdcMint: row.usdc_mint,
                     agentUSDCAccount: row.agent_usdc_account,
                     merchantUSDCAccount: row.merchant_usdc_account,
+                    depositAmount: row.deposit_amount,
+                    cancelledAt: row.cancelled_at,
+                    refundTxSignature: row.refund_tx_signature,
+                });
+            });
+        });
+    }
+    /**
+     * Cancel merchant and process refund
+     */
+    async cancelMerchant(merchantId, refundTxSignature) {
+        const db = this.db;
+        return new Promise((resolve, reject) => {
+            const sql = `
+        UPDATE merchants
+        SET status = 'cancelled',
+            cancelled_at = datetime('now'),
+            refund_tx_signature = ?,
+            agent_private_key = NULL
+        WHERE merchant_id = ? AND status = 'active'
+      `;
+            db.run(sql, [refundTxSignature, merchantId], function (err) {
+                if (err) {
+                    reject(new DatabaseError(`Failed to cancel merchant: ${err.message}`));
+                    return;
+                }
+                if (this.changes === 0) {
+                    reject(new DatabaseError('Merchant not found or already cancelled'));
+                    return;
+                }
+                // Deactivate all affiliates for this merchant
+                const deactivateSql = `
+          UPDATE affiliates
+          SET status = 'inactive'
+          WHERE merchant_id = ?
+        `;
+                db.run(deactivateSql, [merchantId], (deactivateErr) => {
+                    if (deactivateErr) {
+                        console.error(`Warning: Failed to deactivate affiliates: ${deactivateErr.message}`);
+                        // Don't reject - merchant is already cancelled
+                    }
+                    resolve();
                 });
             });
         });

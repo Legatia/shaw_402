@@ -290,5 +290,73 @@ async function verifyRegistrationPayment(txSignature, fromWallet, toWallet) {
         return false;
     }
 }
+/**
+ * POST /merchant/:merchantId/cancel
+ * Cancel merchant account and refund security deposit
+ *
+ * Body:
+ * - merchantWallet: string (must match registered wallet)
+ * - signature: string (signature of cancellation message)
+ * - message: string (cancellation message that was signed)
+ */
+router.post('/:merchantId/cancel', async (req, res) => {
+    try {
+        const { merchantId } = req.params;
+        const { merchantWallet, signature, message } = req.body;
+        // Validation
+        if (!merchantWallet || !signature || !message) {
+            res.status(400).json(errorResponse('Missing required fields: merchantWallet, signature, message', 'INVALID_INPUT', 400));
+            return;
+        }
+        // 1. Verify merchant exists and is active
+        const merchant = await affiliateDb.getMerchant(merchantId);
+        if (!merchant) {
+            res.status(404).json(errorResponse('Merchant not found', 'NOT_FOUND', 404));
+            return;
+        }
+        if (merchant.status === 'cancelled') {
+            res.status(400).json(errorResponse('Merchant already cancelled', 'ALREADY_CANCELLED', 400));
+            return;
+        }
+        if (merchant.merchantWallet !== merchantWallet) {
+            res.status(403).json(errorResponse('Wallet address mismatch', 'UNAUTHORIZED', 403));
+            return;
+        }
+        // 2. Verify signature
+        console.log(`🔐 Verifying cancellation signature for ${merchantId}...`);
+        const isValid = await solanaUtils.verifyWalletSignature(merchantWallet, message, signature);
+        if (!isValid) {
+            res.status(401).json(errorResponse('Invalid signature', 'INVALID_SIGNATURE', 401));
+            return;
+        }
+        // 3. Refund deposit to merchant
+        const platformKeypair = Keypair.fromSecretKey(bs58.decode(PLATFORM_KEYPAIR_SECRET));
+        const merchantPubkey = new PublicKey(merchantWallet);
+        const refundAmount = parseInt(merchant.depositAmount || process.env.REGISTRATION_FEE || '1000000000');
+        console.log(`💰 Refunding ${refundAmount / 1e9} SOL to ${merchantWallet}...`);
+        const refundTxSignature = await solanaUtils.transferSOL(platformKeypair, merchantPubkey, refundAmount);
+        console.log(`✅ Refund successful: ${refundTxSignature}`);
+        // 4. Update database
+        await affiliateDb.cancelMerchant(merchantId, refundTxSignature);
+        console.log(`✅ Merchant ${merchantId} cancelled successfully`);
+        // 5. Return success response
+        res.json(successResponse({
+            merchantId,
+            refundTxSignature,
+            refundAmount: refundAmount.toString(),
+            cancelledAt: new Date().toISOString(),
+            message: 'Your 1 SOL deposit has been refunded. Thank you for using Shaw 402!',
+        }));
+    }
+    catch (error) {
+        console.error('Merchant cancellation error:', error);
+        // Check for specific errors
+        if (error.message?.includes('insufficient')) {
+            res.status(500).json(errorResponse('Platform wallet does not have enough SOL for refund. Please contact support.', 'INSUFFICIENT_PLATFORM_BALANCE', 500));
+            return;
+        }
+        res.status(500).json(errorResponse(error.message || 'Failed to cancel merchant', 'CANCELLATION_ERROR', 500));
+    }
+});
 export default router;
 //# sourceMappingURL=merchant.js.map
